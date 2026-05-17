@@ -6,7 +6,7 @@ import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote_plus, urlparse
+from urllib.parse import quote, unquote_plus, urlparse
 
 import httpx
 from dotenv import load_dotenv
@@ -36,28 +36,57 @@ def headers(prefer=None):
 
 
 def normalize_model(value):
-    return re.sub(r'\s+', '', (value or '').strip().upper())
+    return re.sub(r'[^A-Z0-9]', '', (value or '').strip().upper())
 
 
-def find_product(brand, model):
-    brand_q = (brand or '').replace('*', '')
-    model_q = (model or '').replace('*', '')
+def clean_query(value):
+    return quote((value or '').replace('*', '').strip(), safe='')
+
+
+def find_products(brand, model):
+    model_q = clean_query(model)
+    if not model_q:
+        return []
+    filters = f'&equipment_model=ilike.*{model_q}*'
+    if brand:
+        filters += f'&brand=ilike.*{clean_query(brand)}*'
     endpoint = (
         f'{SUPABASE_URL}/rest/v1/refrigerator_products'
         '?select=*'
-        f'&brand=ilike.*{brand_q}*'
-        f'&equipment_model=ilike.*{model_q}*'
-        '&limit=10'
+        f'{filters}'
+        '&order=product_image_url.desc.nullslast'
+        '&limit=20'
     )
     with httpx.Client(timeout=30) as client:
         response = client.get(endpoint, headers=headers())
         response.raise_for_status()
         rows = response.json()
+    if rows or not brand:
+        return rows
+    # Fallback: many customers only know the model, or brand spelling is different.
+    fallback = (
+        f'{SUPABASE_URL}/rest/v1/refrigerator_products'
+        '?select=*'
+        f'&equipment_model=ilike.*{model_q}*'
+        '&order=product_image_url.desc.nullslast'
+        '&limit=20'
+    )
+    with httpx.Client(timeout=30) as client:
+        response = client.get(fallback, headers=headers())
+        response.raise_for_status()
+        return response.json()
+
+
+def find_product(brand, model):
+    rows = find_products(brand, model)
     if not rows:
         return None
     wanted = normalize_model(model)
     for row in rows:
         if normalize_model(row.get('equipment_model')) == wanted:
+            return row
+    for row in rows:
+        if wanted and wanted in normalize_model(row.get('equipment_model')):
             return row
     return rows[0]
 
@@ -113,7 +142,7 @@ def parse_multipart(content_type, body):
     files = {}
     for raw_part in body.split(boundary_bytes):
         part = raw_part.strip(b'\r\n')
-        if not part or part == b'--' or b'\r\n--':
+        if not part or part == b'--' or part == b'\r\n--':
             continue
         if b'\r\n\r\n' not in part:
             continue
@@ -196,10 +225,10 @@ def render_home(message=''):
 <section class="hero">
   <div>
     <h2>Find the Right Refrigerator Door Gasket Fast</h2>
-    <p class="muted">Customers do not need to know the part number. Start with a nameplate photo, brand, or model. We confirm the fit before the gasket is made.</p>
+    <p class="muted">Customers do not need to know the part number. Start with a nameplate photo or model number. We confirm the fit before the gasket is made.</p>
     <div class="card-grid">
       <div class="card"><strong>Send a photo</strong><p class="muted">Upload the nameplate from the job site.</p></div>
-      <div class="card"><strong>We check the model</strong><p class="muted">We look for the gasket option that fits your unit.</p></div>
+      <div class="card"><strong>Search by model</strong><p class="muted">Brand is helpful, but the model number is the most important.</p></div>
       <div class="card"><strong>Order with confidence</strong><p class="muted">Matched gaskets can move to Shopify checkout.</p></div>
     </div>
   </div>
@@ -210,7 +239,7 @@ def render_home(message=''):
       <div class="grid">
         <div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div>
         <div><label>Customer name</label><input name="customer_name" placeholder="ABC Restaurant"></div>
-        <div><label>Brand</label><input name="brand" placeholder="True, Traulsen, Sub-Zero" required></div>
+        <div><label>Brand (optional)</label><input name="brand" placeholder="True, Traulsen, Sub-Zero"></div>
         <div><label>Model</label><input name="equipment_model" placeholder="T-49, D2R, 685/S/2" required></div>
       </div>
       <div style="margin-top:12px"><label>Notes</label><textarea name="notes" placeholder="Door count, urgency, measurements, phone, email..."></textarea></div>
@@ -278,6 +307,11 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def do_HEAD(self):
+        self.send_response(HTTPStatus.OK)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.end_headers()
+
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == '/':
@@ -312,8 +346,8 @@ class Handler(BaseHTTPRequestHandler):
         model = (fields.get('equipment_model') or '').strip()
         customer_name = (fields.get('customer_name') or '').strip() or None
         notes = (fields.get('notes') or '').strip() or None
-        if not brand or not model:
-            self.send_html(render_home('Please enter brand and model.'), HTTPStatus.BAD_REQUEST)
+        if not model:
+            self.send_html(render_home('Please enter the refrigerator model.'), HTTPStatus.BAD_REQUEST)
             return
         saved_path = None
         file_item = files.get('nameplate')
