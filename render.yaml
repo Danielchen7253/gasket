@@ -29,3 +29,20 @@ services:
         sync: false
       - key: GOOGLE_CSE_ID
         sync: false
+  - type: cron
+    name: daily-database-digest
+    runtime: python
+    schedule: "0 8 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python daily_database_digest.py
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DIGEST_EMAIL_TO
+        sync: false
+      - key: DIGEST_EMAIL_FROM
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
