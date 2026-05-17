@@ -142,7 +142,12 @@ def is_valid_gasket_detail(detail: dict) -> bool:
 
 
 def fetch(client: httpx.Client, url: str) -> str:
-    response = client.get(url, follow_redirects=True, timeout=HTTP_TIMEOUT)
+    response = client.get(
+        url,
+        headers={"User-Agent": USER_AGENT},
+        follow_redirects=True,
+        timeout=HTTP_TIMEOUT,
+    )
     response.raise_for_status()
     return response.text
 
@@ -256,7 +261,6 @@ def extract_detail(source_name: str, url: str, html: str, brand: str = "", model
         "source_url": url,
         "source_name": source_name,
         "confidence_score": min(100, confidence),
-        "raw_text_excerpt": text[:1200],
         **images,
     }
 
@@ -596,12 +600,8 @@ def update_model_status(client: httpx.Client, model_id: int, status: str) -> Non
 
 
 def main() -> None:
-    headers = {
-        "User-Agent": USER_AGENT
-    }
-
     inserted = 0
-    with httpx.Client(headers=headers, timeout=60) as client:
+    with httpx.Client(timeout=60) as client:
         models = get_pending_models(client, limit=int(os.getenv("ENRICH_LIMIT", "50")))
         print(f"enriching {len(models)} models")
         for model_row in models:
