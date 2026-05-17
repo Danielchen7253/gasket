@@ -6,8 +6,7 @@ import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
-import cgi
+from urllib.parse import unquote_plus, urlparse
 
 import httpx
 from dotenv import load_dotenv
@@ -78,7 +77,7 @@ def get_gasket_specs(product_id):
 def insert_request(customer_name, image_path, brand, model, product, notes):
     row = {
         'customer_name': customer_name,
-        'nameplate_image_url': str(image_path),
+        'nameplate_image_url': str(image_path) if image_path else None,
         'detected_brand': brand,
         'detected_model': model,
         'matched_refrigerator_product_id': product.get('id') if product else None,
@@ -92,6 +91,60 @@ def insert_request(customer_name, image_path, brand, model, product, notes):
         response.raise_for_status()
         rows = response.json()
     return rows[0] if rows else row
+
+
+def parse_content_disposition(value):
+    result = {}
+    for part in value.split(';'):
+        part = part.strip()
+        if '=' in part:
+            key, raw = part.split('=', 1)
+            result[key.lower()] = raw.strip().strip('"')
+    return result
+
+
+def parse_multipart(content_type, body):
+    marker = 'boundary='
+    if marker not in content_type:
+        return {}, {}
+    boundary = content_type.split(marker, 1)[1].strip().strip('"')
+    boundary_bytes = ('--' + boundary).encode()
+    fields = {}
+    files = {}
+    for raw_part in body.split(boundary_bytes):
+        part = raw_part.strip(b'\r\n')
+        if not part or part == b'--' or b'\r\n--':
+            continue
+        if b'\r\n\r\n' not in part:
+            continue
+        raw_headers, data = part.split(b'\r\n\r\n', 1)
+        data = data.rstrip(b'\r\n')
+        header_lines = raw_headers.decode('utf-8', errors='ignore').split('\r\n')
+        part_headers = {}
+        for line in header_lines:
+            if ':' in line:
+                key, value = line.split(':', 1)
+                part_headers[key.lower().strip()] = value.strip()
+        disp = parse_content_disposition(part_headers.get('content-disposition', ''))
+        name = disp.get('name')
+        if not name:
+            continue
+        filename = disp.get('filename')
+        if filename:
+            files[name] = {'filename': filename, 'content': data}
+        else:
+            fields[name] = data.decode('utf-8', errors='ignore').strip()
+    return fields, files
+
+
+def parse_urlencoded(body):
+    fields = {}
+    for item in body.decode('utf-8', errors='ignore').split('&'):
+        if not item:
+            continue
+        key, _, value = item.partition('=')
+        fields[unquote_plus(key)] = unquote_plus(value)
+    return fields, {}
 
 
 def page(title, body):
@@ -123,7 +176,7 @@ def page(title, body):
     .card {{ border:1px solid var(--line); border-radius:8px; padding:16px; background:#fbfcfe; }}
     .kv {{ display:grid; grid-template-columns:180px 1fr; gap:8px 12px; }}
     .kv div:nth-child(odd) {{ color:var(--muted); }}
-    .product-image {{ width:100%; max-height:320px; object-fit:contain; border:1px solid var(--line); border-radius:8px; background:#f8fafc; }}
+    .product-image {{ width:100%; max-height:320px; min-height:220px; object-fit:contain; border:1px solid var(--line); border-radius:8px; background:#f8fafc; }}
     table {{ width:100%; border-collapse:collapse; }}
     th, td {{ border-top:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; }}
     th {{ color:var(--muted); font-size:12px; text-transform:uppercase; }}
@@ -155,7 +208,7 @@ def render_home(message=''):
     {notice}
     <form method="post" action="/upload" enctype="multipart/form-data">
       <div class="grid">
-        <div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*" required></div>
+        <div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div>
         <div><label>Customer name</label><input name="customer_name" placeholder="ABC Restaurant"></div>
         <div><label>Brand</label><input name="brand" placeholder="True, Traulsen, Sub-Zero" required></div>
         <div><label>Model</label><input name="equipment_model" placeholder="T-49, D2R, 685/S/2" required></div>
@@ -248,27 +301,31 @@ class Handler(BaseHTTPRequestHandler):
         if urlparse(self.path).path != '/upload':
             self.send_error(HTTPStatus.NOT_FOUND)
             return
-        form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={'REQUEST_METHOD': 'POST', 'CONTENT_TYPE': self.headers.get('Content-Type')})
-        file_item = form['nameplate'] if 'nameplate' in form else None
-        brand = (form.getfirst('brand', '') or '').strip()
-        model = (form.getfirst('equipment_model', '') or '').strip()
-        customer_name = (form.getfirst('customer_name', '') or '').strip() or None
-        notes = (form.getfirst('notes', '') or '').strip() or None
-        if file_item is None or not getattr(file_item, 'filename', ''):
-            self.send_html(render_home('Please choose a nameplate photo.'), HTTPStatus.BAD_REQUEST)
-            return
+        length = int(self.headers.get('Content-Length', '0') or '0')
+        body = self.rfile.read(length)
+        content_type = self.headers.get('Content-Type', '')
+        if content_type.startswith('multipart/form-data'):
+            fields, files = parse_multipart(content_type, body)
+        else:
+            fields, files = parse_urlencoded(body)
+        brand = (fields.get('brand') or '').strip()
+        model = (fields.get('equipment_model') or '').strip()
+        customer_name = (fields.get('customer_name') or '').strip() or None
+        notes = (fields.get('notes') or '').strip() or None
         if not brand or not model:
             self.send_html(render_home('Please enter brand and model.'), HTTPStatus.BAD_REQUEST)
             return
-        suffix = Path(file_item.filename).suffix or '.jpg'
-        saved_name = f'{uuid.uuid4().hex}{suffix}'
-        saved_path = UPLOAD_DIR / saved_name
-        with saved_path.open('wb') as out:
-            shutil.copyfileobj(file_item.file, out)
+        saved_path = None
+        file_item = files.get('nameplate')
+        if file_item and file_item.get('content'):
+            suffix = Path(file_item.get('filename') or '').suffix or '.jpg'
+            saved_name = f'{uuid.uuid4().hex}{suffix}'
+            saved_path = UPLOAD_DIR / saved_name
+            saved_path.write_bytes(file_item['content'])
         product = find_product(brand, model)
         request = insert_request(customer_name, saved_path, brand, model, product, notes)
         spec = get_gasket_specs(product['id']) if product else None
-        self.send_html(render_result(f'/uploads/nameplates/{saved_name}', product, spec, request))
+        self.send_html(render_result('/uploads/nameplates/' + saved_path.name if saved_path else '', product, spec, request))
 
 
 def main():
