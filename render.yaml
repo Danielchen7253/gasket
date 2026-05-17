@@ -15,22 +15,11 @@ services:
       - key: GOOGLE_CSE_ID
         sync: false
   - type: cron
-    name: gasket-market-discovery
+    name: gasket-data-pipeline
     runtime: python
-    schedule: "*/20 * * * *"
+    schedule: "*/5 * * * *"
     buildCommand: pip install -r requirements.txt
-    startCommand: python market_discovery_crawler.py
-    envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-  - type: cron
-    name: gasket-product-images
-    runtime: python
-    schedule: "*/30 * * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python product_image_search_crawler.py
+    startCommand: python data_pipeline_worker.py
     envVars:
       - key: SUPABASE_URL
         sync: false
@@ -39,15 +28,4 @@ services:
       - key: GOOGLE_API_KEY
         sync: false
       - key: GOOGLE_CSE_ID
-        sync: false
-  - type: cron
-    name: gasket-enrichment
-    runtime: python
-    schedule: "*/30 * * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python gasket_enrichment_crawler.py
-    envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
