@@ -1,46 +1,51 @@
-# FixPro24 Gasket Match
+# Gasket Match Center
 
-Customer-facing refrigerator door gasket matching site and upload workflow.
+Internal gasket matching web app and crawler tools.
 
-## What This App Does
+## Render web service
 
-- Shows a customer homepage for refrigerator gasket matching.
-- Lets customers start with a nameplate photo or brand/model.
-- Queries Supabase-backed product and gasket records.
-- Prepares a match result that can later connect to Shopify checkout.
+Build command:
 
-## Render Deployment
-
-Use these settings on Render:
-
-- Runtime: `Python 3`
-- Build Command: `pip install -r requirements.txt`
-- Start Command: `python nameplate_web_app.py`
-
-Required environment variables:
-
-```text
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
+```bash
+pip install -r requirements.txt
 ```
 
-Optional environment variables:
+Start command:
 
-```text
-GOOGLE_API_KEY=
-GOOGLE_CSE_ID=
-```
-
-Do not commit `.env` or any private API keys.
-
-## Local Run
-
-```powershell
+```bash
 python nameplate_web_app.py
 ```
 
-Then open:
+Required environment variables:
 
-```text
-http://127.0.0.1:8000/
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `OPENAI_API_KEY` optional for OCR/nameplate extraction
+
+## Render cron jobs
+
+Create separate Cron Jobs from this same repo.
+
+Market discovery:
+
+```bash
+python market_discovery_crawler.py
 ```
+
+Product image enrichment:
+
+```bash
+python product_image_search_crawler.py
+```
+
+Gasket enrichment:
+
+```bash
+python gasket_enrichment_crawler.py
+```
+
+Recommended schedule while building data fast:
+
+- Discovery: every 20 minutes
+- Product images: every 30 minutes
+- Gasket enrichment: every 30 minutes
