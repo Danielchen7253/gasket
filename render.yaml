@@ -14,3 +14,54 @@ services:
         sync: false
       - key: GOOGLE_CSE_ID
         sync: false
+
+  - type: cron
+    name: fixpro24-market-discovery
+    runtime: python
+    plan: starter
+    schedule: '*/20 * * * *'
+    buildCommand: pip install -r requirements.txt
+    startCommand: python market_discovery_crawler.py
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DISCOVERY_QUERY_LIMIT
+        value: '40'
+      - key: DISCOVERY_RESULTS_PER_QUERY
+        value: '10'
+      - key: DISCOVERY_SLEEP_SECONDS
+        value: '0.5'
+
+  - type: cron
+    name: fixpro24-product-images
+    runtime: python
+    plan: starter
+    schedule: '*/30 * * * *'
+    buildCommand: pip install -r requirements.txt
+    startCommand: python product_image_search_crawler.py
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: PRODUCT_IMAGE_LIMIT
+        value: '300'
+
+  - type: cron
+    name: fixpro24-gasket-enrichment
+    runtime: python
+    plan: starter
+    schedule: '*/30 * * * *'
+    buildCommand: pip install -r requirements.txt
+    startCommand: python gasket_enrichment_crawler.py
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ENRICH_LIMIT
+        value: '150'
+      - key: HTTP_TIMEOUT
+        value: '12'
