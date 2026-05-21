@@ -22,6 +22,9 @@ GOOGLE_CSE_CX = os.getenv("GOOGLE_CSE_CX") or os.getenv("GOOGLE_CSE_ID")
 
 PRODUCT_TABLE = "refrigerator_products"
 CANDIDATE_TABLE = "product_image_candidates"
+MIN_PROMOTE_SCORE = float(os.getenv("PRODUCT_IMAGE_MIN_PROMOTE_SCORE", "70"))
+RECHECK_WEAK_IMAGES = os.getenv("PRODUCT_IMAGE_RECHECK_WEAK", "0") == "1"
+PROMOTE_EXISTING_ONLY = os.getenv("PRODUCT_IMAGE_PROMOTE_EXISTING_ONLY", "0") == "1"
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
@@ -44,16 +47,29 @@ def normalized(value: str) -> str:
 
 
 def get_products(client: httpx.Client, limit: int) -> list[dict]:
-    endpoint = (
+    missing_endpoint = (
         f"{SUPABASE_URL}/rest/v1/{PRODUCT_TABLE}"
         "?select=id,brand,equipment_model,product_image_url,product_image_confidence,product_image_verified"
-        "&or=(product_image_url.is.null,product_image_confidence.lt.98)"
+        "&product_image_url=is.null"
+        "&order=id.asc"
         f"&limit={limit}"
     )
-    response = client.get(endpoint, headers=supabase_headers())
+    response = client.get(missing_endpoint, headers=supabase_headers())
     response.raise_for_status()
     rows = response.json()
-    return [row for row in rows if row.get("product_image_verified") is not True]
+    if rows or not RECHECK_WEAK_IMAGES:
+        return [row for row in rows if row.get("product_image_verified") is not True]
+
+    weak_endpoint = (
+        f"{SUPABASE_URL}/rest/v1/{PRODUCT_TABLE}"
+        "?select=id,brand,equipment_model,product_image_url,product_image_confidence,product_image_verified"
+        f"&product_image_confidence=lt.{MIN_PROMOTE_SCORE}"
+        "&order=product_image_confidence.asc.nullsfirst"
+        f"&limit={limit}"
+    )
+    response = client.get(weak_endpoint, headers=supabase_headers())
+    response.raise_for_status()
+    return [row for row in response.json() if row.get("product_image_verified") is not True]
 
 
 def score_candidate(product: dict, candidate: dict) -> float:
@@ -434,13 +450,49 @@ def upsert_candidate(client: httpx.Client, product: dict, candidate: dict) -> di
     return saved[0] if saved else row
 
 
-def promote_best_image(client: httpx.Client, product: dict, candidates: list[dict]) -> bool:
-    if not candidates:
+def get_existing_candidates(client: httpx.Client, product_id: int, limit: int = 20) -> list[dict]:
+    endpoint = (
+        f"{SUPABASE_URL}/rest/v1/{CANDIDATE_TABLE}"
+        "?select=*"
+        f"&refrigerator_product_id=eq.{product_id}"
+        f"&match_score=gte.{MIN_PROMOTE_SCORE}"
+        "&order=match_score.desc"
+        f"&limit={limit}"
+    )
+    response = client.get(endpoint, headers=supabase_headers())
+    response.raise_for_status()
+    return response.json()
+
+
+def is_usable_image(candidate: dict) -> bool:
+    score = float(candidate.get("match_score") or 0)
+    if score < MIN_PROMOTE_SCORE:
         return False
-    best = max(candidates, key=lambda row: float(row.get("match_score") or 0))
+
+    width = int(candidate.get("image_width") or 0)
+    height = int(candidate.get("image_height") or 0)
+    if width and height and min(width, height) < 250:
+        return False
+
+    haystack = normalized(
+        " ".join(
+            str(candidate.get(key) or "")
+            for key in ["image_title", "title", "image_url", "page_url", "source_name"]
+        )
+    )
+    if any(token in haystack for token in ["LOGO", "ICON", "GASKET", "PART", "THUMBNAIL"]):
+        return score >= 90
+    return True
+
+
+def promote_best_image(client: httpx.Client, product: dict, candidates: list[dict]) -> bool:
+    usable = [candidate for candidate in candidates if is_usable_image(candidate)]
+    if not usable:
+        return False
+    best = max(usable, key=lambda row: float(row.get("match_score") or 0))
     best_score = float(best.get("match_score") or 0)
     current_score = float(product.get("product_image_confidence") or 0)
-    if best_score < 90 or best_score <= current_score:
+    if best_score <= current_score and product.get("product_image_url"):
         return False
 
     endpoint = f"{SUPABASE_URL}/rest/v1/{PRODUCT_TABLE}?id=eq.{product['id']}"
@@ -454,6 +506,15 @@ def promote_best_image(client: httpx.Client, product: dict, candidates: list[dic
         },
     )
     response.raise_for_status()
+
+    candidate_id = best.get("id")
+    if candidate_id:
+        response = client.patch(
+            f"{SUPABASE_URL}/rest/v1/{CANDIDATE_TABLE}?id=eq.{candidate_id}",
+            headers=supabase_headers("return=minimal"),
+            json={"is_selected": True},
+        )
+        response.raise_for_status()
     return True
 
 
@@ -465,14 +526,18 @@ def main() -> None:
         promoted = 0
         saved_count = 0
         for product in products:
-            raw_candidates = []
-            raw_candidates.extend(search_serpapi(client, product))
-            raw_candidates.extend(search_google_cse(client, product))
-            if not raw_candidates:
-                raw_candidates.extend(search_public_web_images(client, product))
-            saved = [upsert_candidate(client, product, row) for row in raw_candidates]
+            saved = get_existing_candidates(client, product["id"])
+            promoted_this = promote_best_image(client, product, saved)
+            if not promoted_this and not PROMOTE_EXISTING_ONLY:
+                raw_candidates = []
+                raw_candidates.extend(search_serpapi(client, product))
+                raw_candidates.extend(search_google_cse(client, product))
+                if not raw_candidates:
+                    raw_candidates.extend(search_public_web_images(client, product))
+                saved = [upsert_candidate(client, product, row) for row in raw_candidates]
+                promoted_this = promote_best_image(client, product, saved)
             saved_count += len(saved)
-            if promote_best_image(client, product, saved):
+            if promoted_this:
                 promoted += 1
         print(f"saved candidates: {saved_count}")
         print(f"promoted product images: {promoted}")
