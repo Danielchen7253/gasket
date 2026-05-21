@@ -6,6 +6,7 @@ import httpx
 from dotenv import load_dotenv
 
 import gasket_enrichment_crawler
+import gasket_spec_refresher
 import market_discovery_crawler
 import product_image_search_crawler
 
@@ -86,7 +87,9 @@ def main() -> None:
         run_step("model discovery", market_discovery_crawler.main)
         run_step("product image backfill", product_image_search_crawler.main)
         ensure_gasket_placeholders(int(os.getenv("ENRICH_LIMIT", "120")))
+        run_step("gasket spec refresh", gasket_spec_refresher.main)
         run_step("gasket data backfill", gasket_enrichment_crawler.main)
+        run_step("gasket spec refresh after crawl", gasket_spec_refresher.main)
         if index + 1 < cycles and pause_seconds:
             time.sleep(pause_seconds)
 
