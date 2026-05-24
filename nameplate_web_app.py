@@ -1,9 +1,11 @@
 import base64
+from datetime import datetime, timezone
 import html
 import json
 import mimetypes
 import os
 import re
+import threading
 import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,6 +27,7 @@ SHOPIFY_STORE_DOMAIN = os.getenv("SHOPIFY_STORE_DOMAIN", "").strip()
 ROOT = Path(__file__).resolve().parent
 UPLOAD_DIR = ROOT / "uploads" / "customer_nameplates"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+BACKGROUND_REFRESHING: set[int] = set()
 
 
 def esc(value) -> str:
@@ -81,6 +84,45 @@ def model_similarity_score(wanted: str, candidate: str) -> float:
     if wanted_norm in candidate_norm or candidate_norm in wanted_norm:
         return 75
     return 0
+
+
+def door_positions_for_count(count: int) -> list[dict]:
+    layouts = {
+        1: [("single_door", "Single Door")],
+        2: [("left_door", "Left Door"), ("right_door", "Right Door")],
+        3: [("top_door", "Top Door"), ("left_door", "Left Door"), ("right_door", "Right Door")],
+        4: [
+            ("upper_left_door", "Upper Left Door"),
+            ("upper_right_door", "Upper Right Door"),
+            ("lower_left_door", "Lower Left Door"),
+            ("lower_right_door", "Lower Right Door"),
+        ],
+    }
+    return [{"key": key, "label": label} for key, label in layouts.get(count, [])]
+
+
+def infer_door_positions(product: dict) -> list[dict]:
+    existing = product.get("door_positions")
+    if isinstance(existing, list) and existing:
+        return existing
+    try:
+        count = int(product.get("door_count") or 0)
+    except Exception:
+        count = 0
+    if not count:
+        count = estimated_gasket_quantity(product, [])
+    return door_positions_for_count(max(1, min(4, count)))
+
+
+def door_layout_name(positions: list[dict]) -> str:
+    keys = [item.get("key") for item in positions]
+    if keys == ["left_door", "right_door"]:
+        return "side_by_side_2_door"
+    if keys == ["top_door", "left_door", "right_door"]:
+        return "top_over_2_door"
+    if keys == ["upper_left_door", "upper_right_door", "lower_left_door", "lower_right_door"]:
+        return "quad_4_door"
+    return f"{len(positions)}_door"
 
 
 def supabase_headers(prefer: str | None = None) -> dict[str, str]:
@@ -288,6 +330,74 @@ def get_quote_items(client: httpx.Client, product_id: int) -> list[dict]:
     return customer_quote_items(response.json())
 
 
+def save_inferred_door_layout(client: httpx.Client, product: dict, positions: list[dict]) -> None:
+    if product.get("door_positions") or not positions:
+        return
+    payload = {
+        "door_count": len(positions),
+        "door_layout": door_layout_name(positions),
+        "door_positions": positions,
+        "door_layout_confidence": 55,
+        "door_layout_source": "model_number_inference",
+        "door_layout_updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    response = client.patch(
+        f"{SUPABASE_URL}/rest/v1/refrigerator_products?id=eq.{product['id']}",
+        headers=supabase_headers("return=minimal"),
+        json=payload,
+    )
+    response.raise_for_status()
+
+
+def trigger_background_refresh(product_id: int, need_image: bool, need_gaskets: bool) -> None:
+    if product_id in BACKGROUND_REFRESHING:
+        return
+    if not need_image and not need_gaskets:
+        return
+    BACKGROUND_REFRESHING.add(product_id)
+
+    def worker() -> None:
+        try:
+            with httpx.Client(timeout=60) as client:
+                product = get_product(client, product_id)
+                if not product:
+                    return
+                if need_image and not product.get("product_image_url"):
+                    try:
+                        from product_image_search_crawler import (
+                            get_existing_candidates,
+                            promote_best_image,
+                            search_google_cse,
+                            search_public_web_images,
+                            search_serpapi,
+                            upsert_candidate,
+                        )
+
+                        saved = get_existing_candidates(client, product_id)
+                        promoted = promote_best_image(client, product, saved)
+                        if not promoted:
+                            raw = []
+                            raw.extend(search_serpapi(client, product))
+                            raw.extend(search_google_cse(client, product))
+                            if not raw:
+                                raw.extend(search_public_web_images(client, product))
+                            saved = [upsert_candidate(client, product, row) for row in raw[:20]]
+                            promote_best_image(client, product, saved)
+                    except Exception as exc:
+                        print(f"background image refresh failed for {product_id}: {exc}")
+                if need_gaskets:
+                    try:
+                        from gasket_spec_refresher import refresh_product_gasket_spec
+
+                        refresh_product_gasket_spec(client, product_id)
+                    except Exception as exc:
+                        print(f"background gasket refresh failed for {product_id}: {exc}")
+        finally:
+            BACKGROUND_REFRESHING.discard(product_id)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 def estimated_gasket_quantity(product: dict, quote_items: list[dict]) -> int:
     model_text = product.get("equipment_model", "") or ""
     slash_match = re.search(r"/([234])$", model_text)
@@ -360,6 +470,8 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 .facts{{display:grid;grid-template-columns:140px 1fr;gap:8px 12px}} .facts div:nth-child(odd){{color:#687385}}
 .item{{display:grid;grid-template-columns:34px 98px 1fr 150px 120px;gap:12px;align-items:center;border:1px solid #dbe2ea;border-radius:8px;padding:12px}}
 .item img{{width:98px;height:78px;object-fit:contain;border:1px solid #dbe2ea;border-radius:6px}} .price strong{{font-size:24px;display:block}}
+.loading{{display:flex;align-items:center;justify-content:center;color:#687385;background:linear-gradient(90deg,#f8fafc,#eef3f6,#f8fafc);background-size:220% 100%;animation:pulse 1.4s ease-in-out infinite}}
+@keyframes pulse{{0%{{background-position:0 0}}100%{{background-position:220% 0}}}}
 @media(max-width:860px){{.hero,.result-grid,.grid,.summary,.item{{grid-template-columns:1fr}}}}
 </style></head><body><header><strong>Refrigerator Door Gasket Match</strong></header><main>{body}</main>
 <script>function updateTotal(){{let t=0,c=0;document.querySelectorAll('[data-price]').forEach(b=>{{if(b.checked){{t+=Number(b.dataset.price||0);c++}}}});let a=document.getElementById('selected-total'),n=document.getElementById('selected-count');if(a)a.textContent='$'+t.toFixed(2);if(n)n.textContent=c}}document.addEventListener('change',updateTotal);window.addEventListener('load',updateTotal)</script>
@@ -407,23 +519,32 @@ def render_no_match(brand: str, model: str, upload_url: str | None, nameplate_da
 
 def render_result(product: dict, quote_items: list[dict], request: dict | None, upload_url: str | None) -> bytes:
     nameplate_data = (request or {}).get("nameplate_data") or {}
-    quantity = estimated_gasket_quantity(product, quote_items)
+    positions = infer_door_positions(product)
+    quantity = len(positions) or estimated_gasket_quantity(product, quote_items)
+    trigger_background_refresh(product["id"], not product.get("product_image_url"), not quote_items)
     product_img = product.get("product_image_url")
-    product_html = f"<img class='photo' src='{esc(product_img)}' alt='Refrigerator product image'>" if product_img else "<div class='photo muted'>Product image pending</div>"
+    product_html = f"<img class='photo' src='{esc(product_img)}' alt='Refrigerator product image'>" if product_img else "<div class='photo loading'>Loading product image...</div>"
     plate_html = f"<img class='plate' src='{esc(upload_url)}' alt='Uploaded nameplate'>" if upload_url else "<div class='plate muted'>Nameplate photo</div>"
     rows = []
-    for index, item in enumerate(quote_items):
+    primary_item = quote_items[0] if quote_items else None
+    for index, position in enumerate(positions or door_positions_for_count(quantity), start=1):
+        item = primary_item
+        door_label = position.get("label") or f"Door {index}"
+        door_key = position.get("key") or f"door_{index}"
+        if not item:
+            rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px">Loading</div><div><strong>{esc(door_label)} Gasket</strong><p>Reading gasket data for this door...</p></div><div class="price"><strong>Loading</strong><small>Price pending</small></div><div><small class="muted">Door</small><br><strong>{esc(door_key)}</strong></div></div>""")
+            continue
         price = float(item.get("final_price_usd") or 0)
-        line_price = price * quantity
-        checked = "checked" if index == 0 else ""
+        line_price = price
+        checked = "checked"
         image = item.get("gasket_image_url")
         image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<div class='muted'>No gasket image</div>"
         dims = item.get("dimensions_text") or f"{item.get('width_in') or '-'} x {item.get('height_in') or '-'} in"
-        rows.append(f"""<label class="item"><input type="checkbox" data-price="{line_price}" {checked}>{image_html}<div><strong>{esc(item.get('gasket_name') or 'Door gasket')}</strong><p>{esc(dims)}<br>Perimeter: {esc(item.get('perimeter_in') or 'TBD')} in<br>Quantity for this refrigerator: {quantity}<br>Source: {esc(item.get('source_name'))}</p></div><div class="price"><strong>{money(line_price)}</strong><small>{money(price)} each</small></div><div><small class="muted">Part</small><br><strong>{esc(item.get('part_number') or item.get('universal_part_number') or 'TBD')}</strong></div></label>""")
+        rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{line_price}" {checked}>{image_html}<div><strong>{esc(door_label)} Gasket</strong><p>{esc(dims)}<br>Perimeter: {esc(item.get('perimeter_in') or 'TBD')} in<br>Source: {esc(item.get('source_name'))}</p></div><div class="price"><strong>{money(line_price)}</strong><small>each selected door</small></div><div><small class="muted">Part</small><br><strong>{esc(item.get('part_number') or item.get('universal_part_number') or 'TBD')}</strong></div></label>""")
     return page("Matched Gasket Quote", f"""
 <section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-<section><h2>Gasket quote</h2><div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div><div>{''.join(rows) if rows else '<p class="muted">No quote items yet.</p>'}</div></section>
-<div class="checkout"><strong>Ready to order?</strong><br><span class="muted">Select the gasket solution for this refrigerator.</span></div>""")
+<section><h2>Gasket quote</h2><div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div><div>{''.join(rows) if rows else '<p class="muted">Reading gasket data...</p>'}</div></section>
+<div class="checkout"><strong>Ready to order?</strong><br><span class="muted">Select the exact door gaskets you want to replace.</span></div>""")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -463,6 +584,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not product:
                     self.send_error(HTTPStatus.NOT_FOUND)
                     return
+                positions = infer_door_positions(product)
+                save_inferred_door_layout(client, product, positions)
+                product["door_positions"] = positions
+                product["door_count"] = len(positions)
                 self.send_html(render_result(product, get_quote_items(client, product_id), None, None))
             return
         self.send_error(HTTPStatus.NOT_FOUND)
@@ -514,6 +639,10 @@ class Handler(BaseHTTPRequestHandler):
             if not product:
                 self.send_html(render_no_match(brand, model, upload_url, nameplate_data))
                 return
+            positions = infer_door_positions(product)
+            save_inferred_door_layout(client, product, positions)
+            product["door_positions"] = positions
+            product["door_count"] = len(positions)
             self.send_html(render_result(product, get_quote_items(client, product["id"]), request, upload_url))
 
 
