@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 import gasket_enrichment_crawler
 import gasket_spec_refresher
-import market_discovery_crawler
+import market_discovery_v2 as market_discovery_crawler
 import product_image_search_crawler
 
 
@@ -72,9 +72,12 @@ def ensure_gasket_placeholders(limit: int) -> None:
 
 
 def main() -> None:
-    os.environ.setdefault("DISCOVERY_QUERY_LIMIT", "8")
-    os.environ.setdefault("DISCOVERY_RESULTS_PER_QUERY", "8")
+    os.environ.setdefault("DISCOVERY_QUERY_LIMIT", "16")
+    os.environ.setdefault("DISCOVERY_RESULTS_PER_QUERY", "10")
     os.environ.setdefault("DISCOVERY_SLEEP_SECONDS", "0.5")
+    os.environ.setdefault("DISCOVERY_PROMOTE_SCORE", "80")
+    os.environ.setdefault("DISCOVERY_HIGH_CONFIDENCE_SCORE", "65")
+    os.environ.setdefault("DISCOVERY_MIN_INDEPENDENT_SOURCES", "2")
     os.environ.setdefault("PRODUCT_IMAGE_LIMIT", "120")
     os.environ.setdefault("ENRICH_LIMIT", "120")
     os.environ.setdefault("CRAWL_DELAY", "0.2")
@@ -84,7 +87,7 @@ def main() -> None:
 
     for index in range(cycles):
         print(f"pipeline cycle {index + 1}/{cycles}")
-        run_step("model discovery", market_discovery_crawler.main)
+        run_step("cross-validated model discovery", market_discovery_crawler.main)
         run_step("product image backfill", product_image_search_crawler.main)
         ensure_gasket_placeholders(int(os.getenv("ENRICH_LIMIT", "120")))
         run_step("gasket spec refresh", gasket_spec_refresher.main)
