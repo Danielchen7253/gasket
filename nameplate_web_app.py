@@ -370,11 +370,30 @@ def render_home(message: str = "") -> bytes:
     warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
     return page("Gasket Match", f"""
 <section class="hero"><div><h1>Find the Right Refrigerator Door Gasket Fast</h1>
-<p>Upload the equipment nameplate. OpenAI reads the brand and model, then the site checks the live database for a match.</p>
-<div class="summary"><div class="metric"><span>Step 1</span><strong>Upload</strong></div><div class="metric"><span>Step 2</span><strong>Read</strong></div><div class="metric"><span>Step 3</span><strong>Match</strong></div></div>
-</div><form method="post" action="/match" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
+<p>Upload the equipment nameplate. We read it first, you confirm the details, then the site matches the live database.</p>
+<div class="summary"><div class="metric"><span>Step 1</span><strong>Upload</strong></div><div class="metric"><span>Step 2</span><strong>Confirm</strong></div><div class="metric"><span>Step 3</span><strong>Match</strong></div></div>
+</div><form method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
 <div class="grid"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div><div><label>Customer name</label><input name="customer_name"></div><div><label>Email</label><input name="customer_email"></div><div><label>Phone</label><input name="customer_phone"></div></div>
-<p><button type="submit">Match gasket</button></p><p class="muted">If the database does not have this model yet, the result will say the database has no record.</p></form></section>""")
+<p><button type="submit">Read nameplate</button></p><p class="muted">You can correct the brand or model before matching the database.</p></form></section>""")
+
+
+def render_confirm_nameplate(upload_url: str, customer: dict, nameplate_data: dict, fallback_brand: str = "", fallback_model: str = "") -> bytes:
+    brand = nameplate_data.get("brand") or fallback_brand
+    model = nameplate_data.get("model") or fallback_model
+    raw_text = nameplate_data.get("raw_text") or ""
+    return page("Confirm Nameplate", f"""
+<section><h2>Confirm nameplate information</h2>
+<p>Check the uploaded nameplate against the information below. If anything is wrong, edit it before matching the database.</p>
+<div class="result-grid"><div><h3>Nameplate photo</h3><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></div>
+<form method="post" action="/match" enctype="multipart/form-data"><h3>Read information</h3>
+<input type="hidden" name="upload_url" value="{esc(upload_url)}">
+<input type="hidden" name="customer_name" value="{esc(customer.get('customer_name') or '')}">
+<input type="hidden" name="customer_email" value="{esc(customer.get('customer_email') or '')}">
+<input type="hidden" name="customer_phone" value="{esc(customer.get('customer_phone') or '')}">
+<div class="grid"><div><label>Brand</label><input name="brand" value="{esc(brand or '')}"></div><div><label>Model</label><input name="equipment_model" value="{esc(model or '')}"></div><div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div><div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or '')}"></div><div><label>Manufacture date</label><input name="manufacture_date" value="{esc(nameplate_data.get('manufacture_date') or '')}"></div><div><label>Refrigerant</label><input name="refrigerant" value="{esc(nameplate_data.get('refrigerant') or '')}"></div><div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div></div>
+<label>Raw text</label><textarea name="raw_text" style="width:100%;min-height:110px;border:1px solid #dbe2ea;border-radius:6px;padding:10px">{esc(raw_text)}</textarea>
+<p><button type="submit">Confirm and match database</button> <a class="button" href="/">Upload another</a></p>
+</form></div></section>""")
 
 
 def render_no_match(brand: str, model: str, upload_url: str | None, nameplate_data: dict) -> bytes:
@@ -449,16 +468,21 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
-        if urlparse(self.path).path != "/match":
+        path = urlparse(self.path).path
+        if path not in {"/read-nameplate", "/match"}:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         fields = parse_multipart(self.rfile.read(int(self.headers.get("Content-Length", "0"))), self.headers.get("Content-Type", ""))
         brand = fields.get("brand", {}).get("text", "").strip()
         model = fields.get("equipment_model", {}).get("text", "").strip()
-        upload_url = None
+        upload_url = fields.get("upload_url", {}).get("text", "").strip() or None
         nameplate_data = {}
         file_field = fields.get("nameplate")
-        if file_field and file_field.get("filename") and file_field.get("data"):
+        customer = {key: fields.get(key, {}).get("text") or None for key in ("customer_name", "customer_email", "customer_phone")}
+        if path == "/read-nameplate":
+            if not (file_field and file_field.get("filename") and file_field.get("data")):
+                self.send_html(render_home("Please upload a nameplate photo first."), HTTPStatus.BAD_REQUEST)
+                return
             saved_name = f"{uuid.uuid4().hex}{Path(file_field['filename']).suffix or '.jpg'}"
             (UPLOAD_DIR / saved_name).write_bytes(file_field["data"])
             upload_url = f"/uploads/customer_nameplates/{saved_name}"
@@ -467,13 +491,24 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.send_html(render_home(f"Nameplate recognition failed: {exc}"), HTTPStatus.BAD_REQUEST)
                 return
-            brand = (nameplate_data.get("brand") or brand or "").strip()
-            model = (nameplate_data.get("model") or model or "").strip()
+            self.send_html(render_confirm_nameplate(upload_url, customer, nameplate_data, brand, model))
+            return
+
+        nameplate_data = {
+            "brand": brand or None,
+            "model": model or None,
+            "serial_number": fields.get("serial_number", {}).get("text") or None,
+            "manufacturer": fields.get("manufacturer", {}).get("text") or None,
+            "manufacture_date": fields.get("manufacture_date", {}).get("text") or None,
+            "refrigerant": fields.get("refrigerant", {}).get("text") or None,
+            "voltage": fields.get("voltage", {}).get("text") or None,
+            "raw_text": fields.get("raw_text", {}).get("text") or "",
+            "confidence": 100,
+        }
         if not brand or not model:
-            self.send_html(render_home("OpenAI could not read brand and model from this photo."), HTTPStatus.BAD_REQUEST)
+            self.send_html(render_confirm_nameplate(upload_url or "", customer, nameplate_data, brand, model), HTTPStatus.BAD_REQUEST)
             return
         with httpx.Client(timeout=30) as client:
-            customer = {key: fields.get(key, {}).get("text") or None for key in ("customer_name", "customer_email", "customer_phone")}
             product = find_product(client, brand, model)
             request = create_request(client, customer, upload_url, brand, model, product, nameplate_data)
             if not product:
