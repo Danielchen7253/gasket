@@ -1,5 +1,7 @@
 import html
+import base64
 import json
+import mimetypes
 import os
 import re
 import uuid
@@ -17,6 +19,8 @@ load_dotenv(Path(__file__).with_name(".env"))
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 SHOPIFY_STORE_DOMAIN = os.getenv("SHOPIFY_STORE_DOMAIN", "").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_NAMEPLATE_MODEL = os.getenv("OPENAI_NAMEPLATE_MODEL", "gpt-4.1-mini")
 
 ROOT = Path(__file__).resolve().parent
 UPLOAD_DIR = ROOT / "uploads" / "customer_nameplates"
@@ -48,6 +52,72 @@ def supabase_headers(prefer: str | None = None) -> dict[str, str]:
 
 def normalize_model(value: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (value or "").upper())
+
+
+def extract_json_object(value: str) -> dict:
+    value = (value or "").strip()
+    if not value:
+        return {}
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", value, re.S)
+        if not match:
+            return {}
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return {}
+
+
+def identify_nameplate(image_bytes: bytes, filename: str = "") -> dict:
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OpenAI key not configured")
+    mime_type = mimetypes.guess_type(filename)[0] or "image/jpeg"
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    prompt = (
+        "Read this refrigerator/freezer equipment nameplate. Return JSON only with keys: "
+        "brand, model, serial_number, manufacturer, manufacture_date, refrigerant, voltage, raw_text, confidence. "
+        "Use null for missing fields. The model is the equipment model number, not the serial number."
+    )
+    payload = {
+        "model": OPENAI_NAMEPLATE_MODEL,
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:{mime_type};base64,{encoded}",
+                        "detail": "high",
+                    },
+                ],
+            }
+        ],
+    }
+    response = httpx.post(
+        "https://api.openai.com/v1/responses",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=60,
+    )
+    response.raise_for_status()
+    data = response.json()
+    output_text = data.get("output_text")
+    if not output_text:
+        texts = []
+        for item in data.get("output", []):
+            for content in item.get("content", []):
+                if content.get("type") in {"output_text", "text"} and content.get("text"):
+                    texts.append(content["text"])
+        output_text = "\n".join(texts)
+    parsed = extract_json_object(output_text or "")
+    parsed.setdefault("raw_text", output_text or "")
+    return parsed
 
 
 def parse_multipart(body: bytes, content_type: str) -> dict[str, dict]:
@@ -98,6 +168,32 @@ def find_product(client: httpx.Client, brand: str, model: str) -> dict | None:
     return rows[0]
 
 
+def find_product_by_model(client: httpx.Client, brand: str, model: str) -> dict | None:
+    if brand:
+        product = find_product(client, brand, model)
+        if product:
+            return product
+    model_q = (model or "").replace("*", "")
+    if not model_q:
+        return None
+    endpoint = (
+        f"{SUPABASE_URL}/rest/v1/refrigerator_products"
+        "?select=*"
+        f"&equipment_model=ilike.*{model_q}*"
+        "&limit=20"
+    )
+    response = client.get(endpoint, headers=supabase_headers())
+    response.raise_for_status()
+    rows = response.json()
+    if not rows:
+        return None
+    wanted = normalize_model(model)
+    for row in rows:
+        if normalize_model(row.get("equipment_model", "")) == wanted:
+            return row
+    return rows[0]
+
+
 def get_product(client: httpx.Client, product_id: int) -> dict | None:
     response = client.get(
         f"{SUPABASE_URL}/rest/v1/refrigerator_products?select=*&id=eq.{product_id}&limit=1",
@@ -127,17 +223,25 @@ def create_request(
     brand: str,
     model: str,
     product: dict | None,
+    ocr_text: str | None = None,
+    nameplate_data: dict | None = None,
 ) -> dict:
+    confidence = None
+    if nameplate_data and nameplate_data.get("confidence") is not None:
+        try:
+            confidence = float(nameplate_data.get("confidence"))
+        except (TypeError, ValueError):
+            confidence = None
     payload = {
         "customer_name": customer_name,
         "customer_email": customer_email,
         "customer_phone": customer_phone,
         "nameplate_image_url": upload_url,
-        "ocr_text": f"Demo input: {brand} {model}",
+        "ocr_text": ocr_text or f"OpenAI nameplate input: {brand} {model}",
         "detected_brand": brand,
         "detected_model": model,
         "matched_refrigerator_product_id": product.get("id") if product else None,
-        "match_score": 100 if product else 0,
+        "match_score": confidence if confidence is not None else (100 if product else 0),
         "status": "matched" if product else "needs_review",
     }
     response = client.post(
@@ -147,7 +251,10 @@ def create_request(
     )
     response.raise_for_status()
     rows = response.json()
-    return rows[0] if rows else payload
+    saved = rows[0] if rows else payload
+    if nameplate_data:
+        saved["nameplate_data"] = nameplate_data
+    return saved
 
 
 def shopify_cart_url(items: list[dict]) -> str:
@@ -244,11 +351,11 @@ def render_home(message: str = "") -> bytes:
 <section class="hero">
   <div>
     <h1>Find the Right Refrigerator Door Gasket Fast</h1>
-    <p>Upload the equipment nameplate or type the brand and model. The demo reads the live database, returns the refrigerator summary, and builds selectable gasket quote items.</p>
+    <p>Upload the equipment nameplate. OpenAI reads the brand and model, then the site checks the live database for a match.</p>
     <div class="summary">
       <div class="metric"><span>Step 1</span><strong>Upload</strong></div>
-      <div class="metric"><span>Step 2</span><strong>Match</strong></div>
-      <div class="metric"><span>Step 3</span><strong>Pay</strong></div>
+      <div class="metric"><span>Step 2</span><strong>Read</strong></div>
+      <div class="metric"><span>Step 3</span><strong>Match</strong></div>
     </div>
   </div>
   <form class="upload" method="post" action="/match" enctype="multipart/form-data">
@@ -257,26 +364,37 @@ def render_home(message: str = "") -> bytes:
     <div class="grid">
       <div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div>
       <div><label>Customer name</label><input name="customer_name" placeholder="Restaurant or customer"></div>
-      <div><label>Brand</label><input name="brand" placeholder="Sub-Zero" value="Sub-Zero"></div>
-      <div><label>Model</label><input name="equipment_model" placeholder="685/S/2" value="685/S/2"></div>
+      <div><label>Brand fallback</label><input name="brand" placeholder="Optional if photo is unclear"></div>
+      <div><label>Model fallback</label><input name="equipment_model" placeholder="Optional if photo is unclear"></div>
       <div><label>Email</label><input name="customer_email" placeholder="customer@email.com"></div>
       <div><label>Phone</label><input name="customer_phone" placeholder="Phone number"></div>
     </div>
     <div style="margin-top:14px"><button type="submit">Match gasket</button></div>
-    <p class="muted">Demo note: real OCR will replace manual brand/model input later.</p>
+    <p class="muted">If the database does not have this model yet, the result will say the database has no record.</p>
   </form>
 </section>
 """
     return render_page("Gasket Match Demo", body)
 
 
-def render_no_match(brand: str, model: str, upload_url: str | None) -> bytes:
+def render_no_match(brand: str, model: str, upload_url: str | None, nameplate_data: dict | None = None) -> bytes:
     plate = f"<img class='plate' src='{esc(upload_url)}' alt='Uploaded nameplate'>" if upload_url else ""
+    data = nameplate_data or {}
+    summary = f"""
+  <div class="facts">
+    <div>Brand read</div><div><strong>{esc(brand or 'Not found')}</strong></div>
+    <div>Model read</div><div><strong>{esc(model or 'Not found')}</strong></div>
+    <div>Serial</div><div>{esc(data.get('serial_number') or 'Not found')}</div>
+    <div>Manufacturer</div><div>{esc(data.get('manufacturer') or 'Not found')}</div>
+    <div>Raw text</div><div>{esc(data.get('raw_text') or '')}</div>
+  </div>
+"""
     body = f"""
 <section>
-  <h2>We need to review this model</h2>
-  <p>No database product matched <strong>{esc(brand)} {esc(model)}</strong>. The request can still be saved for manual review.</p>
+  <h2>Database has no record for this model yet</h2>
+  <p>OpenAI read the nameplate, but no database product matched <strong>{esc(brand)} {esc(model)}</strong>.</p>
   {plate}
+  {summary}
   <p><a class="button" href="/">Try another nameplate</a></p>
 </section>
 """
@@ -284,6 +402,7 @@ def render_no_match(brand: str, model: str, upload_url: str | None) -> bytes:
 
 
 def render_result(product: dict, quote_items: list[dict], request: dict | None, upload_url: str | None) -> bytes:
+    nameplate_data = (request or {}).get("nameplate_data") or {}
     product_image = product.get("product_image_url")
     product_image_html = (
         f"<img class='photo' src='{esc(product_image)}' alt='Refrigerator product image'>"
@@ -348,6 +467,9 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
     <div>
       <h3>Nameplate summary</h3>
       <div class="facts">
+        <div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div>
+        <div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div>
+        <div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div>
         <div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div>
         <div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div>
         <div>Manufacturer</div><div>{esc(product.get('manufacturer'))}</div>
@@ -429,19 +551,31 @@ class Handler(BaseHTTPRequestHandler):
             fields = {k: {"text": v[0], "filename": "", "data": b""} for k, v in parse_qs(body.decode("utf-8", errors="ignore")).items()}
         brand = fields.get("brand", {}).get("text", "").strip()
         model = fields.get("equipment_model", {}).get("text", "").strip()
-        if not brand or not model:
-            self.send_html(render_home("Please enter brand and model for this demo."), HTTPStatus.BAD_REQUEST)
-            return
         upload_url = None
         file_field = fields.get("nameplate")
+        nameplate_data = {}
+        image_bytes = b""
+        image_name = ""
         if file_field and file_field.get("filename") and file_field.get("data"):
+            image_bytes = file_field["data"]
+            image_name = file_field["filename"]
             suffix = Path(file_field["filename"]).suffix or ".jpg"
             saved_name = f"{uuid.uuid4().hex}{suffix}"
             saved_path = UPLOAD_DIR / saved_name
-            saved_path.write_bytes(file_field["data"])
+            saved_path.write_bytes(image_bytes)
             upload_url = f"/uploads/customer_nameplates/{saved_name}"
+            try:
+                nameplate_data = identify_nameplate(image_bytes, image_name)
+            except Exception as exc:
+                self.send_html(render_home(f"Nameplate recognition failed: {exc}"), HTTPStatus.BAD_REQUEST)
+                return
+            brand = (nameplate_data.get("brand") or brand or "").strip()
+            model = (nameplate_data.get("model") or model or "").strip()
+        if not brand or not model:
+            self.send_html(render_home("OpenAI could not read brand and model from this photo."), HTTPStatus.BAD_REQUEST)
+            return
         with httpx.Client(timeout=30) as client:
-            product = find_product(client, brand, model)
+            product = find_product_by_model(client, brand, model)
             request = create_request(
                 client,
                 fields.get("customer_name", {}).get("text") or None,
@@ -451,9 +585,11 @@ class Handler(BaseHTTPRequestHandler):
                 brand,
                 model,
                 product,
+                ocr_text=nameplate_data.get("raw_text"),
+                nameplate_data=nameplate_data,
             )
             if not product:
-                self.send_html(render_no_match(brand, model, upload_url))
+                self.send_html(render_no_match(brand, model, upload_url, nameplate_data))
                 return
             quote_items = get_quote_items(client, product["id"])
         self.send_html(render_result(product, quote_items, request, upload_url))
