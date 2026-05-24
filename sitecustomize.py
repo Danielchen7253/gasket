@@ -1,10 +1,4 @@
-"""Runtime patch for the deployed nameplate app.
-
-Render starts nameplate_web_app.py directly. This module is imported by Python
-before that script runs, so it installs a tiny trace hook and replaces the
-customer-facing render helpers after the script finishes defining them but before
-main() starts the server.
-"""
+"""Runtime patch for the deployed nameplate app."""
 
 import sys
 
@@ -29,6 +23,13 @@ def _install_patch(g):
 
     old_page = g["page"]
     esc = g["esc"]
+
+    def patched_is_unconfirmed_new_product(product):
+        return (
+            not product.get("product_image_url")
+            and not product.get("door_layout_source")
+            and not product.get("door_positions")
+        )
 
     def patched_page(title, body):
         html = old_page(title, body).decode("utf-8")
@@ -55,11 +56,7 @@ def _install_patch(g):
 
     def patched_render_result(product, quote_items, request, upload_url):
         nameplate_data = (request or {}).get("nameplate_data") or {}
-        pending_new = (
-            product.get("data_status") == "customer_requested"
-            and not product.get("door_layout_source")
-            and not product.get("door_positions")
-        )
+        pending_new = g["is_unconfirmed_new_product"](product)
         positions = [] if pending_new else g["infer_door_positions"](product)
         quantity = 0 if pending_new else (len(positions) or g["estimated_gasket_quantity"](product, quote_items))
         g["trigger_background_refresh"](product["id"], not product.get("product_image_url"), not quote_items)
@@ -103,6 +100,7 @@ def _install_patch(g):
 <div class="checkout"><strong>Ready to order?</strong><br><span class="muted">Select the gasket solution for this refrigerator.</span></div>""")
 
     g["page"] = patched_page
+    g["is_unconfirmed_new_product"] = patched_is_unconfirmed_new_product
     g["render_no_match"] = patched_render_no_match
     g["render_result"] = patched_render_result
     _PATCHED = True
@@ -116,5 +114,6 @@ def _trace(frame, event, arg):
             sys.settrace(None)
             return None
     return _trace
+
 
 sys.settrace(_trace)
