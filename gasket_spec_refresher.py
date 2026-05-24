@@ -84,6 +84,8 @@ def is_valid_gasket_detail(detail: dict) -> bool:
     name = (detail.get("gasket_name") or "").lower()
     if any(token in name for token in ["cutting board", "hinge", "caster", "shelf"]):
         return False
+    if "search results" in name or "search result" in name:
+        return False
     return bool(
         detail.get("dimensions_text")
         or detail.get("width_in")
@@ -143,6 +145,36 @@ def rank_details(details: list[dict]) -> list[dict]:
     )
 
 
+def detail_customer_score(detail: dict) -> float:
+    score = float(detail.get("rank_score") or detail.get("confidence_score") or 0)
+    width = detail.get("width_in")
+    height = detail.get("height_in")
+    if width and height:
+        score += min(12, ((float(width) + float(height)) * 2) / 18)
+    source = (detail.get("source_name") or "").lower()
+    if "parts town" in source:
+        score += 6
+    elif "webstaurant" in source:
+        score += 3
+    if detail.get("gasket_part_number") or detail.get("universal_part_number"):
+        score += 4
+    return score
+
+
+def customer_details(details: list[dict]) -> list[dict]:
+    grouped: dict[str, dict] = {}
+    for detail in details:
+        if not (detail.get("width_in") and detail.get("height_in")) and not (
+            detail.get("gasket_part_number") or detail.get("universal_part_number")
+        ):
+            continue
+        key = dimension_key(detail) or detail.get("gasket_part_number") or detail.get("universal_part_number") or ""
+        current = grouped.get(key)
+        if current is None or detail_customer_score(detail) > detail_customer_score(current):
+            grouped[key] = detail
+    return sorted(grouped.values(), key=detail_customer_score, reverse=True)[:1]
+
+
 def get_details_for_product(client: httpx.Client, product_id: int) -> list[dict]:
     endpoint = (
         f"{SUPABASE_URL}/rest/v1/{DETAIL_TABLE}"
@@ -171,11 +203,12 @@ def refresh_product_gasket_spec(client: httpx.Client, product_id: int) -> None:
             "is_verified": False,
         }
     else:
-        best = details[0]
+        display_details = customer_details(details) or details[:1]
+        best = display_details[0]
         sources = []
         seen_sources = set()
         doors = []
-        for detail in details[:8]:
+        for detail in display_details:
             source_key = (detail.get("source_name"), detail.get("source_url"))
             if source_key not in seen_sources:
                 seen_sources.add(source_key)
