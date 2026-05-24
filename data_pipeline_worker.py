@@ -72,23 +72,27 @@ def ensure_gasket_placeholders(limit: int) -> None:
 
 
 def main() -> None:
-    os.environ.setdefault("DISCOVERY_QUERY_LIMIT", "16")
-    os.environ.setdefault("DISCOVERY_RESULTS_PER_QUERY", "10")
-    os.environ.setdefault("DISCOVERY_SLEEP_SECONDS", "0.5")
+    os.environ.setdefault("DISCOVERY_QUERY_LIMIT", "8")
+    os.environ.setdefault("DISCOVERY_RESULTS_PER_QUERY", "5")
+    os.environ.setdefault("DISCOVERY_SLEEP_SECONDS", "0.8")
     os.environ.setdefault("DISCOVERY_PROMOTE_SCORE", "80")
     os.environ.setdefault("DISCOVERY_HIGH_CONFIDENCE_SCORE", "65")
     os.environ.setdefault("DISCOVERY_MIN_INDEPENDENT_SOURCES", "2")
-    os.environ.setdefault("PRODUCT_IMAGE_LIMIT", "120")
     os.environ.setdefault("ENRICH_LIMIT", "120")
     os.environ.setdefault("CRAWL_DELAY", "0.2")
 
     cycles = int(os.getenv("PIPELINE_CYCLES", "1"))
     pause_seconds = float(os.getenv("PIPELINE_PAUSE_SECONDS", "0"))
+    image_backfill_enabled = os.getenv("PIPELINE_IMAGE_BACKFILL_ENABLED", "0") == "1"
 
     for index in range(cycles):
         print(f"pipeline cycle {index + 1}/{cycles}")
         run_step("cross-validated model discovery", market_discovery_crawler.main)
-        run_step("product image backfill", product_image_search_crawler.main)
+        if image_backfill_enabled:
+            os.environ.setdefault("PRODUCT_IMAGE_LIMIT", "20")
+            run_step("product image backfill", product_image_search_crawler.main)
+        else:
+            print("skipping product image backfill in high-frequency pipeline")
         ensure_gasket_placeholders(int(os.getenv("ENRICH_LIMIT", "120")))
         run_step("gasket spec refresh", gasket_spec_refresher.main)
         run_step("gasket data backfill", gasket_enrichment_crawler.main)
