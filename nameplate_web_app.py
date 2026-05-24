@@ -474,7 +474,7 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 @keyframes pulse{{0%{{background-position:0 0}}100%{{background-position:220% 0}}}}
 @media(max-width:860px){{.hero,.result-grid,.grid,.summary,.item{{grid-template-columns:1fr}}}}
 </style></head><body><header><strong>Refrigerator Door Gasket Match</strong></header><main>{body}</main>
-<script>function updateTotal(){{let t=0,c=0;document.querySelectorAll('[data-price]').forEach(b=>{{if(b.checked){{t+=Number(b.dataset.price||0);c++}}}});let a=document.getElementById('selected-total'),n=document.getElementById('selected-count');if(a)a.textContent='$'+t.toFixed(2);if(n)n.textContent=c}}document.addEventListener('change',updateTotal);window.addEventListener('load',updateTotal)</script>
+<script>function updateTotal(){{let t=0,c=0;document.querySelectorAll('[data-price]').forEach(b=>{{if(b.checked){{t+=Number(b.dataset.price||0);c++}}}});let a=document.getElementById('selected-total'),n=document.getElementById('selected-count');if(a)a.textContent='$'+t.toFixed(2);if(n)n.textContent=c}}document.addEventListener('change',updateTotal);window.addEventListener('load',updateTotal);function pollProductStatus(){{let el=document.querySelector('[data-refresh-product]');if(!el)return;let id=el.getAttribute('data-refresh-product');let wantsImage=el.getAttribute('data-needs-image')==='1';let wantsGasket=el.getAttribute('data-needs-gasket')==='1';if(!wantsImage&&!wantsGasket)return;setInterval(async()=>{{try{{let r=await fetch('/product-status?product_id='+encodeURIComponent(id),{{cache:'no-store'}});let d=await r.json();if((wantsImage&&d.product_image_url)||(wantsGasket&&d.quote_item_count>0))window.location.reload();}}catch(e){{}}}},5000)}}window.addEventListener('load',pollProductStatus)</script>
 </body></html>""".encode("utf-8")
 
 
@@ -523,6 +523,8 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
     quantity = len(positions) or estimated_gasket_quantity(product, quote_items)
     trigger_background_refresh(product["id"], not product.get("product_image_url"), not quote_items)
     product_img = product.get("product_image_url")
+    needs_image = not bool(product_img)
+    needs_gasket = not bool(quote_items)
     product_html = f"<img class='photo' src='{esc(product_img)}' alt='Refrigerator product image'>" if product_img else "<div class='photo loading'>Loading product image...</div>"
     plate_html = f"<img class='plate' src='{esc(upload_url)}' alt='Uploaded nameplate'>" if upload_url else "<div class='plate muted'>Nameplate photo</div>"
     rows = []
@@ -542,8 +544,9 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
         dims = item.get("dimensions_text") or f"{item.get('width_in') or '-'} x {item.get('height_in') or '-'} in"
         rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{line_price}" {checked}>{image_html}<div><strong>{esc(door_label)} Gasket</strong><p>{esc(dims)}<br>Perimeter: {esc(item.get('perimeter_in') or 'TBD')} in<br>Source: {esc(item.get('source_name'))}</p></div><div class="price"><strong>{money(line_price)}</strong><small>each selected door</small></div><div><small class="muted">Part</small><br><strong>{esc(item.get('part_number') or item.get('universal_part_number') or 'TBD')}</strong></div></label>""")
     return page("Matched Gasket Quote", f"""
+<div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 <section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-<section><h2>Gasket quote</h2><div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div><div>{''.join(rows) if rows else '<p class="muted">Reading gasket data...</p>'}</div></section>
+<section><h2>Gasket quote</h2><div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div><div>{''.join(rows) if rows else '<p class="muted">No quote items yet.</p>'}</div></section>
 <div class="checkout"><strong>Ready to order?</strong><br><span class="muted">Select the exact door gaskets you want to replace.</span></div>""")
 
 
@@ -589,6 +592,22 @@ class Handler(BaseHTTPRequestHandler):
                 product["door_positions"] = positions
                 product["door_count"] = len(positions)
                 self.send_html(render_result(product, get_quote_items(client, product_id), None, None))
+            return
+        if parsed.path == "/product-status":
+            product_id = int(parse_qs(parsed.query).get("product_id", ["0"])[0])
+            with httpx.Client(timeout=30) as client:
+                product = get_product(client, product_id)
+                quote_items = get_quote_items(client, product_id) if product else []
+            data = {
+                "product_image_url": product.get("product_image_url") if product else None,
+                "quote_item_count": len(quote_items),
+            }
+            payload = json.dumps(data).encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
