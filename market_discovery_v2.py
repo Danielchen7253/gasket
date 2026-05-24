@@ -1,4 +1,4 @@
-from market_discovery_v4 import main
+from market_discovery_v5 import main
 
 
 if __name__ == "__main__":
