@@ -186,6 +186,7 @@ def refresh_product_gasket_spec(client: httpx.Client, product_id: int) -> None:
                     "width_in": detail.get("width_in"),
                     "height_in": detail.get("height_in"),
                     "dimensions_text": detail.get("dimensions_text"),
+                    "market_price_usd": detail.get("market_price_usd"),
                     "part_number": detail.get("gasket_part_number"),
                     "universal_part_number": detail.get("universal_part_number"),
                     "gasket_part_id": detail.get("gasket_part_id"),
@@ -225,6 +226,19 @@ def refresh_product_gasket_spec(client: httpx.Client, product_id: int) -> None:
         headers=supabase_headers("resolution=merge-duplicates,return=minimal"),
         json=row,
     )
+    response.raise_for_status()
+    refresh_product_quote_items(client, product_id)
+
+
+def refresh_product_quote_items(client: httpx.Client, product_id: int) -> None:
+    response = client.post(
+        f"{SUPABASE_URL}/rest/v1/rpc/refresh_product_quote_items",
+        headers=supabase_headers(),
+        json={"p_product_id": product_id},
+    )
+    if response.status_code == 404:
+        print("quote item refresh skipped: refresh_product_quote_items RPC not found")
+        return
     response.raise_for_status()
 
 
