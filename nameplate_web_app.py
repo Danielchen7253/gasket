@@ -272,6 +272,23 @@ def get_product(client: httpx.Client, product_id: int) -> dict | None:
     return rows[0] if rows else None
 
 
+def create_product_from_confirmed_model(client: httpx.Client, brand: str, model: str) -> dict:
+    payload = {
+        "brand": brand,
+        "equipment_model": model,
+        "data_status": "customer_requested",
+        "last_discovered_at": datetime.now(timezone.utc).isoformat(),
+    }
+    response = client.post(
+        f"{SUPABASE_URL}/rest/v1/refrigerator_products",
+        headers=supabase_headers("return=representation"),
+        json=payload,
+    )
+    response.raise_for_status()
+    rows = response.json()
+    return rows[0]
+
+
 def dimension_key(item: dict) -> str:
     if not item.get("width_in") or not item.get("height_in"):
         return ""
@@ -525,6 +542,7 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
     product_img = product.get("product_image_url")
     needs_image = not bool(product_img)
     needs_gasket = not bool(quote_items)
+    loading_banner = "<section><h2>&#25105;&#20204;&#27491;&#22312;&#21152;&#36733;&#36164;&#26009;</h2></section>" if needs_image or needs_gasket else ""
     product_html = f"<img class='photo' src='{esc(product_img)}' alt='Refrigerator product image'>" if product_img else "<div class='photo loading'>Loading product image...</div>"
     plate_html = f"<img class='plate' src='{esc(upload_url)}' alt='Uploaded nameplate'>" if upload_url else "<div class='plate muted'>Nameplate photo</div>"
     rows = []
@@ -545,9 +563,9 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
         rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{line_price}" {checked}>{image_html}<div><strong>{esc(door_label)} Gasket</strong><p>{esc(dims)}<br>Perimeter: {esc(item.get('perimeter_in') or 'TBD')} in<br>Source: {esc(item.get('source_name'))}</p></div><div class="price"><strong>{money(line_price)}</strong><small>each selected door</small></div><div><small class="muted">Part</small><br><strong>{esc(item.get('part_number') or item.get('universal_part_number') or 'TBD')}</strong></div></label>""")
     return page("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
-<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
+{loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
 <section><h2>Gasket quote</h2><div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div><div>{''.join(rows) if rows else '<p class="muted">No quote items yet.</p>'}</div></section>
-<div class="checkout"><strong>Ready to order?</strong><br><span class="muted">Select the exact door gaskets you want to replace.</span></div>""")
+<div class="checkout"><strong>Ready to order?</strong><br><span class="muted">Select the gasket solution for this refrigerator.</span></div>""")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -654,10 +672,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         with httpx.Client(timeout=30) as client:
             product = find_product(client, brand, model)
-            request = create_request(client, customer, upload_url, brand, model, product, nameplate_data)
             if not product:
-                self.send_html(render_no_match(brand, model, upload_url, nameplate_data))
-                return
+                product = create_product_from_confirmed_model(client, brand, model)
+            request = create_request(client, customer, upload_url, brand, model, product, nameplate_data)
             positions = infer_door_positions(product)
             save_inferred_door_layout(client, product, positions)
             product["door_positions"] = positions
