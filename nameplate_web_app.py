@@ -39,6 +39,50 @@ def normalize_model(value: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (value or "").upper())
 
 
+def model_variants(value: str) -> list[str]:
+    raw = (value or "").strip().upper()
+    compact = normalize_model(raw)
+    variants = {raw, compact}
+    if compact:
+        variants.add(compact.replace("9", "S"))
+        variants.add(compact.replace("S", "9"))
+    slash_suffix = re.match(r"^(\d{2,4})[/-]?([A-Z0-9])[/-]?(\d)$", raw)
+    if slash_suffix:
+        base, middle, suffix = slash_suffix.groups()
+        middle_options = {middle}
+        if middle == "9":
+            middle_options.add("S")
+        if middle == "S":
+            middle_options.add("9")
+        for option in middle_options:
+            variants.add(f"{base}/{option}/{suffix}")
+            variants.add(f"{base}-{option}-{suffix}")
+            variants.add(f"{base}{option}{suffix}")
+    return [item for item in variants if item]
+
+
+def model_similarity_score(wanted: str, candidate: str) -> float:
+    wanted_norm = normalize_model(wanted)
+    candidate_norm = normalize_model(candidate)
+    if not wanted_norm or not candidate_norm:
+        return 0
+    if wanted_norm == candidate_norm:
+        return 100
+    wanted_aliases = set(model_variants(wanted))
+    candidate_aliases = set(model_variants(candidate))
+    if wanted_aliases & candidate_aliases:
+        return 98
+    wanted_digits = re.sub(r"\D", "", wanted_norm)
+    candidate_digits = re.sub(r"\D", "", candidate_norm)
+    if wanted_digits and wanted_digits == candidate_digits:
+        return 92
+    if wanted_digits and candidate_digits and (wanted_digits.startswith(candidate_digits) or candidate_digits.startswith(wanted_digits)):
+        return 82
+    if wanted_norm in candidate_norm or candidate_norm in wanted_norm:
+        return 75
+    return 0
+
+
 def supabase_headers(prefer: str | None = None) -> dict[str, str]:
     headers = {
         "apikey": SUPABASE_SERVICE_ROLE_KEY,
@@ -134,9 +178,12 @@ def find_product(client: httpx.Client, brand: str, model: str) -> dict | None:
     model_q = (model or "").replace("*", "")
     if not model_q:
         return None
+    variants = model_variants(model_q)
     filters = [
-        f"&brand=ilike.*{brand_q}*&equipment_model=ilike.*{model_q}*" if brand_q else "",
-        f"&equipment_model=ilike.*{model_q}*",
+        f"&brand=ilike.*{brand_q}*&equipment_model=ilike.*{variant.replace('*', '')}*" if brand_q else ""
+        for variant in variants
+    ] + [
+        f"&equipment_model=ilike.*{variant.replace('*', '')}*" for variant in variants
     ]
     wanted = normalize_model(model)
     for extra_filter in filters:
@@ -150,6 +197,26 @@ def find_product(client: httpx.Client, brand: str, model: str) -> dict | None:
             if normalize_model(row.get("equipment_model", "")) == wanted:
                 return row
         return rows[0]
+
+    digits = re.sub(r"\D", "", wanted)
+    if digits:
+        base_digits = digits[:3] if len(digits) >= 3 else digits
+        brand_filter = f"&brand=ilike.*{brand_q}*" if brand_q else ""
+        endpoint = (
+            f"{SUPABASE_URL}/rest/v1/refrigerator_products?select=*"
+            f"{brand_filter}&equipment_model=ilike.*{base_digits}*&limit=50"
+        )
+        response = client.get(endpoint, headers=supabase_headers())
+        response.raise_for_status()
+        candidates = response.json()
+        if candidates:
+            ranked = sorted(
+                candidates,
+                key=lambda row: model_similarity_score(model, row.get("equipment_model", "")),
+                reverse=True,
+            )
+            if model_similarity_score(model, ranked[0].get("equipment_model", "")) >= 82:
+                return ranked[0]
     return None
 
 
