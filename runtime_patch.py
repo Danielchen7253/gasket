@@ -118,17 +118,13 @@ def _patched_install(g):
             else f"<div class='photo loading'><span data-loading-label='{product_loading}'>{product_loading} 00:00</span></div>"
         )
         plate_html = f"<img class='plate' src='{esc(upload_url)}' alt='Uploaded nameplate'>" if upload_url else "<div class='plate muted'>Nameplate photo</div>"
-        source_summary = product.get("data_source_summary") or ""
         door_positions = product.get("door_positions") if isinstance(product.get("door_positions"), list) else []
         door_text = ", ".join([item.get("label") or item.get("key") or "" for item in door_positions if item]) or "Loading"
-        confidence = product.get("data_confidence") or product.get("door_layout_confidence") or ""
         product_facts = f"""
 <div class="facts">
 <div>Product type</div><div><strong>{esc(product.get('product_type') or 'Loading')}</strong></div>
 <div>Door layout</div><div>{esc(door_text)}</div>
 <div>Status</div><div>{esc(product.get('lifecycle_status') or 'unknown')}</div>
-<div>Data confidence</div><div>{esc(confidence)}{('%' if confidence != '' else '')}</div>
-<div>Source summary</div><div>{esc(source_summary or 'Loading')}</div>
 </div>"""
 
         rows = []
@@ -271,10 +267,36 @@ def _patched_install(g):
                     product["door_count"] = len(positions)
             self.send_html(g["render_result"](product, g["get_quote_items"](client, product["id"]), request, upload_url))
 
+    old_do_GET = g["Handler"].do_GET
+
+    def patched_do_GET(self):
+        parsed = g["urlparse"](self.path)
+        if parsed.path == "/product-status":
+            product_id = int(g["parse_qs"](parsed.query).get("product_id", ["0"])[0])
+            if product_id:
+                with httpx.Client(timeout=30) as client:
+                    product = g["get_product"](client, product_id)
+                    quote_items = g["get_quote_items"](client, product_id) if product else []
+                if product:
+                    g["trigger_background_refresh"](product_id, not product.get("product_image_url"), not quote_items)
+                data = {
+                    "product_image_url": product.get("product_image_url") if product else None,
+                    "quote_item_count": len(quote_items),
+                }
+                payload = g["json"].dumps(data).encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+        old_do_GET(self)
+
     g["get_quote_items"] = patched_get_quote_items
     g["render_home"] = patched_render_home
     g["render_confirm_nameplate"] = patched_render_confirm_nameplate
     g["render_result"] = patched_render_result
+    g["Handler"].do_GET = patched_do_GET
     g["Handler"].do_POST = patched_do_POST
 
 
