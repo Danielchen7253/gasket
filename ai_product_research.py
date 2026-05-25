@@ -21,6 +21,78 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 AI_RESEARCH_MODEL = os.getenv("OPENAI_PRODUCT_RESEARCH_MODEL", "gpt-4.1")
 
 
+RESEARCH_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": True,
+    "properties": {
+        "product": {
+            "type": "object",
+            "additionalProperties": True,
+            "properties": {
+                "brand": {"type": ["string", "null"]},
+                "model": {"type": ["string", "null"]},
+                "manufacturer": {"type": ["string", "null"]},
+                "product_type": {"type": ["string", "null"]},
+                "door_count": {"type": ["integer", "null"]},
+                "door_layout": {"type": ["string", "null"]},
+                "door_positions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": True,
+                        "properties": {
+                            "key": {"type": ["string", "null"]},
+                            "label": {"type": ["string", "null"]},
+                        },
+                    },
+                },
+                "product_image_url": {"type": ["string", "null"]},
+                "product_image_source_url": {"type": ["string", "null"]},
+                "lifecycle_status": {"type": ["string", "null"]},
+                "official_product_url": {"type": ["string", "null"]},
+                "manual_url": {"type": ["string", "null"]},
+                "spec_sheet_url": {"type": ["string", "null"]},
+                "model_year_start": {"type": ["integer", "null"]},
+                "model_year_end": {"type": ["integer", "null"]},
+                "confidence_score": {"type": ["number", "null"]},
+                "source_summary": {"type": ["string", "null"]},
+            },
+        },
+        "gaskets": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": True,
+                "properties": {
+                    "door_index": {"type": ["integer", "null"]},
+                    "door_position": {"type": ["string", "null"]},
+                    "door_position_display": {"type": ["string", "null"]},
+                    "gasket_name": {"type": ["string", "null"]},
+                    "part_number": {"type": ["string", "null"]},
+                    "universal_part_number": {"type": ["string", "null"]},
+                    "width_in": {"type": ["number", "null"]},
+                    "height_in": {"type": ["number", "null"]},
+                    "dimensions_text": {"type": ["string", "null"]},
+                    "gasket_color": {"type": ["string", "null"]},
+                    "gasket_install_type": {"type": ["string", "null"]},
+                    "gasket_profile": {"type": ["string", "null"]},
+                    "gasket_image_url": {"type": ["string", "null"]},
+                    "profile_image_url": {"type": ["string", "null"]},
+                    "size_status": {"type": ["string", "null"]},
+                    "source_name": {"type": ["string", "null"]},
+                    "source_url": {"type": ["string", "null"]},
+                    "evidence_summary": {"type": ["string", "null"]},
+                    "confidence_score": {"type": ["number", "null"]},
+                    "needs_customer_confirmation": {"type": ["boolean", "null"]},
+                    "customer_confirmation_note": {"type": ["string", "null"]},
+                },
+            },
+        },
+    },
+    "required": ["product", "gaskets"],
+}
+
+
 def supabase_headers(prefer: str | None = None) -> dict[str, str]:
     headers = {
         "apikey": SUPABASE_SERVICE_ROLE_KEY,
@@ -72,6 +144,8 @@ def clamp_score(value: Any, default: float = 70.0) -> float:
         score = float(value)
     except (TypeError, ValueError):
         score = default
+    if 0 < score <= 1:
+        score *= 100
     return round(max(0, min(100, score)), 2)
 
 
@@ -113,6 +187,8 @@ Rules:
 - Do not invent fake exact dimensions. Use size_status: "official", "cross_reference", "estimated", or "unknown".
 - Door positions must be customer understandable and specific: left fresh food door, right fresh food door, freezer drawer, left door, right door, etc.
 - One door position equals one gasket quote item. A 3-door French door unit should return 3 gasket rows.
+- The gaskets array must contain one row for every known door position. If an exact dimension is not public, still return the OEM or cross-reference part number and use size_status "unknown" or "estimated".
+- Do not return empty gaskets when a parts site, manual, exploded diagram, or same-family part listing identifies a gasket.
 - Include sources. If a field is inferred from same-family parts, explain that in evidence_summary and lower confidence.
 - Product image should be an actual product photo, not a logo, icon, gasket, or manual cover when possible.
 
@@ -168,10 +244,40 @@ JSON shape:
 """
 
 
-def request_ai_research(brand: str, model: str, nameplate_data: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_gasket_followup_prompt(
+    brand: str,
+    model: str,
+    product: dict[str, Any],
+    nameplate_data: dict[str, Any] | None,
+) -> str:
+    product_json = json.dumps(product or {}, ensure_ascii=False)
+    nameplate = json.dumps(nameplate_data or {}, ensure_ascii=False)
+    return f"""
+The previous product research did not return usable gasket rows.
+
+Confirmed refrigerator:
+Brand: {brand}
+Model: {model}
+Known product JSON: {product_json}
+Nameplate JSON: {nameplate}
+
+Use web search and return JSON only with the same schema:
+{{"product": <same or improved product object>, "gaskets": [ ... ]}}
+
+Focus only on refrigerator door gasket information:
+- Search manufacturer parts, Sears PartsDirect, PartSelect, RepairClinic, AppliancePartsPros, PartsDr, Parts Town,
+  WebstaurantStore, and manuals/exploded diagrams.
+- Return one gasket row per actual door position.
+- If a part number is known but dimensions are not public, return the part number and dimensions_text like
+  "not publicly listed; customer measurement required".
+- If a dimension is estimated from same-family structure, mark size_status "estimated" and set confidence lower.
+- Do not use generic category dimensions unless the source clearly matches this exact model or compatible family.
+"""
+
+
+def _call_openai_research(prompt: str) -> dict[str, Any]:
     if not OPENAI_API_KEY:
         raise RuntimeError("OpenAI key not configured")
-    prompt = build_prompt(brand, model, nameplate_data)
     response = None
     errors = []
     attempts = [
@@ -183,6 +289,14 @@ def request_ai_research(brand: str, model: str, nameplate_data: dict[str, Any] |
         payload = {
             "model": model_name,
             "tools": [{"type": tool_type}],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "refrigerator_gasket_research",
+                    "schema": RESEARCH_JSON_SCHEMA,
+                    "strict": False,
+                }
+            },
             "input": [
                 {
                     "role": "user",
@@ -215,6 +329,25 @@ def request_ai_research(brand: str, model: str, nameplate_data: dict[str, Any] |
     parsed = extract_json_object(output_text or "")
     parsed["_raw_output"] = output_text or ""
     return parsed
+
+
+def request_ai_research(brand: str, model: str, nameplate_data: dict[str, Any] | None = None) -> dict[str, Any]:
+    prompt = build_prompt(brand, model, nameplate_data)
+    research = _call_openai_research(prompt)
+    if research.get("gaskets"):
+        return research
+    product = research.get("product") or {"brand": brand, "model": model}
+    followup = build_gasket_followup_prompt(brand, model, product, nameplate_data)
+    gasket_research = _call_openai_research(followup)
+    if gasket_research.get("gaskets"):
+        if not gasket_research.get("product"):
+            gasket_research["product"] = product
+        else:
+            merged_product = dict(product)
+            merged_product.update({k: v for k, v in (gasket_research.get("product") or {}).items() if v not in (None, "")})
+            gasket_research["product"] = merged_product
+        return gasket_research
+    return research
 
 
 def valid_research_for_product(research: dict[str, Any], brand: str, model: str) -> bool:
