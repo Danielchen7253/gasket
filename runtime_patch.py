@@ -82,68 +82,34 @@ def _patched_install(g):
 body>header{display:none}
 main{max-width:none;padding:0}
 .site-header{background:#0f1d24;color:#fff;border:0;border-radius:0;margin:0;padding:0}
-.site-header .wrap,.home-footer .wrap,.work-zone{max-width:1180px;margin:0 auto}
-.site-header .wrap{display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:center;padding:18px 22px}
+.site-header .wrap,.work-zone{max-width:1180px;margin:0 auto}
+.site-header .wrap{display:flex;align-items:center;padding:18px 22px}
 .brand-lockup{display:flex;align-items:center;gap:12px}
 .brand-mark{width:38px;height:38px;border-radius:8px;background:#0a6f78;display:flex;align-items:center;justify-content:center;font-weight:900;letter-spacing:.02em}
 .brand-name{font-size:20px;font-weight:800;line-height:1}
 .brand-tag{display:block;margin-top:4px;color:#b8c8d2;font-size:12px;font-weight:500}
-.promo-line{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
-.promo-line span{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);border-radius:999px;padding:8px 12px;color:#d8e5eb;font-size:13px}
-.header-cta{color:#fff;background:#0a6f78;border-radius:6px;padding:10px 14px;text-decoration:none;font-weight:800;white-space:nowrap}
-.work-shell{background:#eef3f6;padding:26px 22px 30px}
-.work-zone{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:18px;align-items:stretch}
+.work-shell{background:#eef3f6;min-height:calc(100vh - 74px);padding:56px 22px 80px}
+.work-zone{display:flex;justify-content:center;align-items:flex-start}
 .work-panel{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
-.work-panel h1{font-size:38px;line-height:1.05;margin-bottom:12px}
-.workflow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
-.flow-step{border:1px solid #dbe2ea;border-radius:8px;background:#fbfdfe;padding:14px;min-height:112px}
-.flow-step span{display:inline-flex;width:26px;height:26px;border-radius:50%;background:#0f1d24;color:#fff;align-items:center;justify-content:center;font-weight:800;font-size:12px;margin-bottom:10px}
-.flow-step strong{display:block;margin-bottom:6px}
-.flow-step p{font-size:13px;line-height:1.35;margin:0;color:#687385}
-.home-form{background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
+.home-form{width:min(760px,100%);background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:28px;margin:0}
 .upload-working{margin-top:14px;border:1px solid #c9e7ea;background:#eefbfc;color:#0f1d24;border-radius:8px;padding:12px;line-height:1.45}
 .upload-working span{color:#687385}
-.upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}
+.upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:26px}
 .upload-row button{width:auto;white-space:nowrap}
-.home-form .grid{grid-template-columns:1fr 1fr 1fr;margin-top:12px}
-.trust-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
-.trust-strip div{border:1px solid #dbe2ea;border-radius:8px;background:#fbfdfe;padding:12px}
-.trust-strip strong{display:block}
-.home-footer{background:#0f1d24;color:#d8e5eb;border:0;border-radius:0;margin:0;padding:24px 22px}
-.home-footer .wrap{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:22px}
-.home-footer h3{color:#fff;margin:0 0 8px;font-size:15px}
-.home-footer p,.home-footer li{color:#b8c8d2;font-size:13px;margin:0 0 6px;line-height:1.45}
-.home-footer ul{list-style:none;margin:0;padding:0}
-@media(max-width:900px){.site-header .wrap,.work-zone,.home-footer .wrap{grid-template-columns:1fr}.promo-line{justify-content:flex-start}.workflow,.trust-strip,.home-form .grid{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr}.upload-row button,.header-cta{width:100%;justify-content:center;text-align:center}.work-panel h1{font-size:32px}}
+.home-form .grid{grid-template-columns:1fr 1fr;margin-top:8px}
+@media(max-width:900px){.site-header .wrap,.work-zone{grid-template-columns:1fr}.home-form .grid{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr}.upload-row button{width:100%;justify-content:center;text-align:center}}
 </style>"""
         return g["page"]("Gasket Match", f"""
 {upload_style}
 <section class="site-header"><div class="wrap">
 <div class="brand-lockup"><div class="brand-mark">GM</div><div><div class="brand-name">Gasket Match</div><span class="brand-tag">Refrigerator door gasket identification</span></div></div>
-<div class="promo-line"><span>Free nameplate fit check</span><span>Custom gaskets from $45</span><span>Commercial and residential models</span></div>
-<a class="header-cta" href="#upload">Start match</a>
 </div></section>
 <div class="work-shell"><section class="work-zone">
-<div class="work-panel"><h1>Find the Right Refrigerator Door Gasket Fast</h1>
-<p>Upload the equipment nameplate. We read the model, ask you to confirm it, then match the door gasket options for ordering.</p>
-<div class="workflow">
-<div class="flow-step"><span>1</span><strong>Upload</strong><p>Take a clear photo of the refrigerator nameplate.</p></div>
-<div class="flow-step"><span>2</span><strong>Confirm</strong><p>Check the brand, model, serial, voltage, and refrigerant.</p></div>
-<div class="flow-step"><span>3</span><strong>Match</strong><p>See the product image and gasket records by door position.</p></div>
-<div class="flow-step"><span>4</span><strong>Order</strong><p>Select one gasket or all required door gaskets.</p></div>
-</div>
-<div class="trust-strip"><div><strong>Need help?</strong><span class="muted">No gasket part number required.</span></div><div><strong>Price bands</strong><span class="muted">Clear pricing by gasket size.</span></div><div><strong>Fit focused</strong><span class="muted">Built to reduce wrong orders.</span></div></div>
-</div>
 <form id="upload" class="home-form" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
-<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>
-<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div><div><label>Customer name</label><input name="customer_name"></div></div>
-<p class="muted">If the photo is hard to read, type the brand or model here before submitting.</p></form>
+<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div></div>
+<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div></form>
 </section></div>
-<section class="home-footer"><div class="wrap">
-<div><h3>Gasket Match</h3><p>Door gasket identification and quote workflow for refrigerators, freezers, prep tables, merchandisers, and reach-in equipment.</p></div>
-<div><h3>Service scope</h3><ul><li>Commercial refrigeration</li><li>Residential refrigerators</li><li>OEM cross reference</li><li>Custom size gasket quoting</li></ul></div>
-<div><h3>Order support</h3><ul><li>Nameplate-based matching</li><li>Door-position gasket selection</li><li>Customer confirmation before production</li><li>Online payment workflow</li></ul></div>
-</div></section>""")
+""")
 
     def patched_get_quote_items(client, product_id):
         response = client.get(
