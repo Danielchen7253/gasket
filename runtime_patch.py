@@ -67,9 +67,77 @@ def _patched_install(g):
 <p><button type="submit">Confirm and match gasket records</button> <a class="button" href="/">Upload another</a></p>
 </form></div></section>""")
 
+    def patched_render_home(message=""):
+        warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
+        upload_style = """
+<style>
+body>header{display:none}
+main{max-width:none;padding:0}
+.site-header{background:#0f1d24;color:#fff;border:0;border-radius:0;margin:0;padding:0}
+.site-header .wrap,.home-footer .wrap,.work-zone{max-width:1180px;margin:0 auto}
+.site-header .wrap{display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:center;padding:18px 22px}
+.brand-lockup{display:flex;align-items:center;gap:12px}
+.brand-mark{width:38px;height:38px;border-radius:8px;background:#0a6f78;display:flex;align-items:center;justify-content:center;font-weight:900;letter-spacing:.02em}
+.brand-name{font-size:20px;font-weight:800;line-height:1}
+.brand-tag{display:block;margin-top:4px;color:#b8c8d2;font-size:12px;font-weight:500}
+.promo-line{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.promo-line span{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);border-radius:999px;padding:8px 12px;color:#d8e5eb;font-size:13px}
+.header-cta{color:#fff;background:#0a6f78;border-radius:6px;padding:10px 14px;text-decoration:none;font-weight:800;white-space:nowrap}
+.work-shell{background:#eef3f6;padding:26px 22px 30px}
+.work-zone{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:18px;align-items:stretch}
+.work-panel{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
+.work-panel h1{font-size:38px;line-height:1.05;margin-bottom:12px}
+.workflow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
+.flow-step{border:1px solid #dbe2ea;border-radius:8px;background:#fbfdfe;padding:14px;min-height:112px}
+.flow-step span{display:inline-flex;width:26px;height:26px;border-radius:50%;background:#0f1d24;color:#fff;align-items:center;justify-content:center;font-weight:800;font-size:12px;margin-bottom:10px}
+.flow-step strong{display:block;margin-bottom:6px}
+.flow-step p{font-size:13px;line-height:1.35;margin:0;color:#687385}
+.home-form{background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
+.upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}
+.upload-row button{width:auto;white-space:nowrap}
+.home-form .grid{grid-template-columns:1fr 1fr 1fr;margin-top:12px}
+.trust-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.trust-strip div{border:1px solid #dbe2ea;border-radius:8px;background:#fbfdfe;padding:12px}
+.trust-strip strong{display:block}
+.home-footer{background:#0f1d24;color:#d8e5eb;border:0;border-radius:0;margin:0;padding:24px 22px}
+.home-footer .wrap{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:22px}
+.home-footer h3{color:#fff;margin:0 0 8px;font-size:15px}
+.home-footer p,.home-footer li{color:#b8c8d2;font-size:13px;margin:0 0 6px;line-height:1.45}
+.home-footer ul{list-style:none;margin:0;padding:0}
+@media(max-width:900px){.site-header .wrap,.work-zone,.home-footer .wrap{grid-template-columns:1fr}.promo-line{justify-content:flex-start}.workflow,.trust-strip,.home-form .grid{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr}.upload-row button,.header-cta{width:100%;justify-content:center;text-align:center}.work-panel h1{font-size:32px}}
+</style>"""
+        return g["page"]("Gasket Match", f"""
+{upload_style}
+<section class="site-header"><div class="wrap">
+<div class="brand-lockup"><div class="brand-mark">GM</div><div><div class="brand-name">Gasket Match</div><span class="brand-tag">Refrigerator door gasket identification</span></div></div>
+<div class="promo-line"><span>Free nameplate fit check</span><span>Custom gaskets from $45</span><span>Commercial and residential models</span></div>
+<a class="header-cta" href="#upload">Start match</a>
+</div></section>
+<div class="work-shell"><section class="work-zone">
+<div class="work-panel"><h1>Find the Right Refrigerator Door Gasket Fast</h1>
+<p>Upload the equipment nameplate. We read the model, ask you to confirm it, then match the door gasket options for ordering.</p>
+<div class="workflow">
+<div class="flow-step"><span>1</span><strong>Upload</strong><p>Take a clear photo of the refrigerator nameplate.</p></div>
+<div class="flow-step"><span>2</span><strong>Confirm</strong><p>Check the brand, model, serial, voltage, and refrigerant.</p></div>
+<div class="flow-step"><span>3</span><strong>Match</strong><p>See the product image and gasket records by door position.</p></div>
+<div class="flow-step"><span>4</span><strong>Order</strong><p>Select one gasket or all required door gaskets.</p></div>
+</div>
+<div class="trust-strip"><div><strong>Need help?</strong><span class="muted">No gasket part number required.</span></div><div><strong>Price bands</strong><span class="muted">Clear pricing by gasket size.</span></div><div><strong>Fit focused</strong><span class="muted">Built to reduce wrong orders.</span></div></div>
+</div>
+<form id="upload" class="home-form" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
+<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>
+<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div><div><label>Customer name</label><input name="customer_name"></div></div>
+<p class="muted">If the photo is hard to read, type the brand or model here before submitting.</p></form>
+</section></div>
+<section class="home-footer"><div class="wrap">
+<div><h3>Gasket Match</h3><p>Door gasket identification and quote workflow for refrigerators, freezers, prep tables, merchandisers, and reach-in equipment.</p></div>
+<div><h3>Service scope</h3><ul><li>Commercial refrigeration</li><li>Residential refrigerators</li><li>OEM cross reference</li><li>Custom size gasket quoting</li></ul></div>
+<div><h3>Order support</h3><ul><li>Nameplate-based matching</li><li>Door-position gasket selection</li><li>Customer confirmation before production</li><li>Online payment workflow</li></ul></div>
+</div></section>""")
+
     def patched_get_quote_items(client, product_id):
         response = client.get(
-            f"{g['SUPABASE_URL']}/rest/v1/refrigerator_product_quote_items"
+            f"{g['SUPABASE_URL']}/rest/v1/refrigerator_product_gaskets"
             f"?select=*&refrigerator_product_id=eq.{product_id}&order=door_index.asc",
             headers=g["supabase_headers"](),
         )
@@ -148,6 +216,114 @@ def _patched_install(g):
 <section><h2>Gasket quote</h2>{summary_html}<div>{rows_html}</div></section>
 <div class="checkout"><strong>Ready to order?</strong><br><span class="muted">Select the gasket solution for this refrigerator.</span></div>""")
 
+    def patched_do_POST(self):
+        path = g["urlparse"](self.path).path
+        if path not in {"/read-nameplate", "/match"}:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        fields = g["parse_multipart"](
+            self.rfile.read(int(self.headers.get("Content-Length", "0"))),
+            self.headers.get("Content-Type", ""),
+        )
+        brand = fields.get("brand", {}).get("text", "").strip()
+        model = fields.get("equipment_model", {}).get("text", "").strip()
+        upload_url = fields.get("upload_url", {}).get("text", "").strip() or None
+        file_field = fields.get("nameplate")
+        customer = {key: fields.get(key, {}).get("text") or None for key in ("customer_name", "customer_email", "customer_phone")}
+
+        if path == "/read-nameplate":
+            if not (file_field and file_field.get("filename") and file_field.get("data")):
+                self.send_html(g["render_home"]("Please upload a nameplate photo first."), HTTPStatus.BAD_REQUEST)
+                return
+            saved_name = f"{uuid.uuid4().hex}{Path(file_field['filename']).suffix or '.jpg'}"
+            (g["UPLOAD_DIR"] / saved_name).write_bytes(file_field["data"])
+            upload_url = f"/uploads/customer_nameplates/{saved_name}"
+            try:
+                nameplate_data = g["identify_nameplate"](file_field["data"], file_field["filename"])
+            except Exception as exc:
+                self.send_html(g["render_home"](f"Nameplate recognition failed: {exc}"), HTTPStatus.BAD_REQUEST)
+                return
+            self.send_html(g["render_confirm_nameplate"](upload_url, customer, nameplate_data, brand, model))
+            return
+
+        nameplate_data = {
+            "brand": brand or None,
+            "model": model or None,
+            "serial_number": fields.get("serial_number", {}).get("text") or None,
+            "manufacturer": fields.get("manufacturer", {}).get("text") or None,
+            "manufacture_date": fields.get("manufacture_date", {}).get("text") or None,
+            "refrigerant": fields.get("refrigerant", {}).get("text") or None,
+            "voltage": fields.get("voltage", {}).get("text") or None,
+            "raw_text": fields.get("raw_text", {}).get("text") or "",
+            "confidence": 100,
+        }
+        if not brand or not model:
+            self.send_html(g["render_confirm_nameplate"](upload_url or "", customer, nameplate_data, brand, model), HTTPStatus.BAD_REQUEST)
+            return
+
+        with httpx.Client(timeout=30) as client:
+            product = g["find_product"](client, brand, model)
+            if not product:
+                product = g["create_product_from_confirmed_model"](client, brand, model)
+            update_payload = {
+                "manufacturer": fields.get("manufacturer", {}).get("text") or product.get("manufacturer"),
+                "product_type": fields.get("product_type", {}).get("text") or product.get("product_type"),
+                "door_layout": fields.get("door_layout", {}).get("text") or product.get("door_layout"),
+                "product_image_url": fields.get("product_image_url", {}).get("text") or product.get("product_image_url"),
+                "lifecycle_status": fields.get("lifecycle_status", {}).get("text") or product.get("lifecycle_status"),
+                "data_status": product.get("data_status") or "customer_confirmed",
+                "data_confidence": product.get("data_confidence") or 70,
+                "data_source_summary": product.get("data_source_summary") or "Customer-confirmed nameplate and product information.",
+                "updated_at": g["datetime"].now(g["timezone"].utc).isoformat(),
+                "last_enriched_at": g["datetime"].now(g["timezone"].utc).isoformat(),
+            }
+            manufacture_date_text = fields.get("manufacture_date", {}).get("text") or ""
+            if manufacture_date_text:
+                if __import__("re").match(r"^\d{4}-\d{2}-\d{2}$", manufacture_date_text):
+                    update_payload["manufacture_date"] = manufacture_date_text
+                else:
+                    update_payload["manufacture_date_text"] = manufacture_date_text
+            door_count_text = fields.get("door_count", {}).get("text") or ""
+            if door_count_text.strip().isdigit():
+                update_payload["door_count"] = int(door_count_text.strip())
+            door_positions_raw = fields.get("door_positions_json", {}).get("text") or ""
+            if door_positions_raw.strip():
+                try:
+                    import json
+
+                    parsed_positions = json.loads(door_positions_raw)
+                    if isinstance(parsed_positions, list):
+                        update_payload["door_positions"] = parsed_positions
+                        update_payload["door_layout_source"] = "customer_confirmed_form"
+                        update_payload["door_layout_updated_at"] = g["datetime"].now(g["timezone"].utc).isoformat()
+                except Exception:
+                    pass
+            clean_payload = {key: value for key, value in update_payload.items() if value not in (None, "")}
+            if clean_payload:
+                response = client.patch(
+                    f"{g['SUPABASE_URL']}/rest/v1/refrigerator_products?id=eq.{product['id']}",
+                    headers=g["supabase_headers"]("return=representation"),
+                    json=clean_payload,
+                )
+                response.raise_for_status()
+                updated_rows = response.json()
+                if updated_rows:
+                    product = updated_rows[0]
+            try:
+                from ai_product_research import enrich_confirmed_product
+
+                product = enrich_confirmed_product(client, product, nameplate_data, force=True)
+            except Exception as exc:
+                print(f"AI product research failed for {brand} {model}: {exc}")
+            request = g["create_request"](client, customer, upload_url, brand, model, product, nameplate_data)
+            if not g["is_unconfirmed_new_product"](product):
+                positions = g["infer_door_positions"](product)
+                if positions:
+                    g["save_inferred_door_layout"](client, product, positions)
+                    product["door_positions"] = positions
+                    product["door_count"] = len(positions)
+            self.send_html(g["render_result"](product, g["get_quote_items"](client, product["id"]), request, upload_url))
+
     old_do_GET = g["Handler"].do_GET
 
     def patched_do_GET(self):
@@ -182,9 +358,11 @@ def _patched_install(g):
         old_do_GET(self)
 
     g["get_quote_items"] = patched_get_quote_items
+    g["render_home"] = patched_render_home
     g["render_confirm_nameplate"] = patched_render_confirm_nameplate
     g["render_result"] = patched_render_result
     g["Handler"].do_GET = patched_do_GET
+    g["Handler"].do_POST = patched_do_POST
 
 
 sitecustomize._install_patch = _patched_install
