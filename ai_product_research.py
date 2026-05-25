@@ -579,7 +579,6 @@ def replace_flat_gaskets(client: httpx.Client, product_id: int, research: dict[s
         "universal_part_number",
         "width_in",
         "height_in",
-        "perimeter_in",
         "dimensions_text",
         "gasket_color",
         "gasket_install_type",
