@@ -376,6 +376,8 @@ def save_inferred_door_layout(client: httpx.Client, product: dict, positions: li
 
 
 def trigger_background_refresh(product_id: int, need_image: bool, need_gaskets: bool) -> None:
+    if os.getenv("DISABLE_BACKGROUND_CRAWLERS", "1") == "1":
+        return
     if product_id in BACKGROUND_REFRESHING:
         return
     if not need_image and not need_gaskets:

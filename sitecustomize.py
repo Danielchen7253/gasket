@@ -25,6 +25,7 @@ def _install_patch(g):
     esc = g["esc"]
 
     def patched_trigger_background_refresh(product_id: int, need_image: bool, need_gaskets: bool) -> None:
+        return
         refreshing = g["BACKGROUND_REFRESHING"]
         if product_id in refreshing:
             return
