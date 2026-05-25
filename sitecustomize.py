@@ -125,8 +125,6 @@ main{max-width:none;padding:0}
     def patched_render_result(product, quote_items, request, upload_url):
         nameplate_data = (request or {}).get("nameplate_data") or {}
         pending_new = g["is_unconfirmed_new_product"](product)
-        positions = [] if pending_new else g["infer_door_positions"](product)
-        quantity = 0 if pending_new else (len(positions) or g["estimated_gasket_quantity"](product, quote_items))
         g["trigger_background_refresh"](product["id"], not product.get("product_image_url"), not quote_items)
         product_img = product.get("product_image_url")
         needs_image = not bool(product_img)
@@ -138,17 +136,12 @@ main{max-width:none;padding:0}
         plate_html = f"<img class='plate' src='{esc(upload_url)}' alt='Uploaded nameplate'>" if upload_url else "<div class='plate muted'>Nameplate photo</div>"
 
         rows = []
-        primary_item = quote_items[0] if quote_items else None
-        if pending_new and not primary_item:
+        if pending_new and not quote_items:
             rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
 
-        for index, position in enumerate(positions or g["door_positions_for_count"](quantity), start=1):
-            item = primary_item
-            door_label = position.get("label") or f"Door {index}"
-            door_key = position.get("key") or f"door_{index}"
-            if not item:
-                rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{esc(door_label)} Gasket</strong></div><div class="price"><strong>Loading</strong></div><div><small class="muted">Door</small><br><strong>{esc(door_key)}</strong></div></div>""")
-                continue
+        for index, item in enumerate(quote_items, start=1):
+            door_label = item.get("door_position_display") or "Door position loading"
+            door_key = item.get("door_position") or f"door_{index}"
             price = float(item.get("final_price_usd") or 0)
             image = item.get("gasket_image_url")
             image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<div class='muted'>No gasket image</div>"
@@ -157,9 +150,12 @@ main{max-width:none;padding:0}
             perimeter_html = f"<br>Perimeter: {esc(perimeter)} in" if perimeter not in (None, "") else ""
             part_number = item.get("part_number") or item.get("universal_part_number")
             part_html = f"<div><small class='muted'>Part</small><br><strong>{esc(part_number)}</strong></div>" if part_number else "<div></div>"
-            rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)} Gasket</strong><p>{esc(dims)}{perimeter_html}<br>Source: {esc(item.get('source_name'))}</p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div>{part_html}</label>""")
+            rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)}</strong><p>{esc(dims)}{perimeter_html}<br>Source: {esc(item.get('source_name'))}</p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div>{part_html}</label>""")
 
-        summary_html = "" if pending_new else f"""<div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
+        if not quote_items and not pending_new:
+            rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
+
+        summary_html = "" if pending_new else f"""<div class="summary"><div class="metric"><span>Door positions</span><strong>{len(quote_items)}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
         rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
         return g["page"]("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
