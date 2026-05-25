@@ -377,6 +377,13 @@ def save_inferred_door_layout(client: httpx.Client, product: dict, positions: li
 
 def trigger_background_refresh(product_id: int, need_image: bool, need_gaskets: bool) -> None:
     if os.getenv("DISABLE_BACKGROUND_CRAWLERS", "1") == "1":
+        try:
+            from instant_enrichment import start_instant_enrichment
+
+            if need_image or need_gaskets:
+                start_instant_enrichment(product_id)
+        except Exception as exc:
+            print(f"instant enrichment trigger failed for {product_id}: {exc}")
         return
     if product_id in BACKGROUND_REFRESHING:
         return
@@ -507,7 +514,7 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 @media(max-width:860px){{.hero,.result-grid,.grid,.summary,.item{{grid-template-columns:1fr}}}}
 @media(max-width:860px){{.upload-row{{grid-template-columns:1fr}}}}
 </style></head><body><header><strong>Refrigerator Door Gasket Match</strong></header><main>{body}</main>
-<script>function updateTotal(){{let t=0,c=0;document.querySelectorAll('[data-price]').forEach(b=>{{if(b.checked){{t+=Number(b.dataset.price||0);c++}}}});let a=document.getElementById('selected-total'),n=document.getElementById('selected-count');if(a)a.textContent='$'+t.toFixed(2);if(n)n.textContent=c}}function fmt(s){{let m=Math.floor(s/60),r=s%60;return String(m).padStart(2,'0')+':'+String(r).padStart(2,'0')}}function startLoadingTimers(){{let start=Date.now();setInterval(()=>{{let s=Math.floor((Date.now()-start)/1000);document.querySelectorAll('[data-loading-label]').forEach(el=>{{el.textContent=el.getAttribute('data-loading-label')+' '+fmt(s)}})}},1000)}}document.addEventListener('change',updateTotal);window.addEventListener('load',updateTotal);window.addEventListener('load',startLoadingTimers);function pollProductStatus(){{let el=document.querySelector('[data-refresh-product]');if(!el)return;let id=el.getAttribute('data-refresh-product');let wantsImage=el.getAttribute('data-needs-image')==='1';let wantsGasket=el.getAttribute('data-needs-gasket')==='1';if(!wantsImage&&!wantsGasket)return;setInterval(async()=>{{try{{let r=await fetch('/product-status?product_id='+encodeURIComponent(id),{{cache:'no-store'}});let d=await r.json();if((wantsImage&&d.product_image_url)||(wantsGasket&&d.quote_item_count>0))window.location.reload();}}catch(e){{}}}},2000)}}window.addEventListener('load',pollProductStatus)</script>
+<script>function updateTotal(){{let t=0,c=0;document.querySelectorAll('[data-price]').forEach(b=>{{if(b.checked){{t+=Number(b.dataset.price||0);c++}}}});let a=document.getElementById('selected-total'),n=document.getElementById('selected-count');if(a)a.textContent='$'+t.toFixed(2);if(n)n.textContent=c}}function fmt(s){{let m=Math.floor(s/60),r=s%60;return String(m).padStart(2,'0')+':'+String(r).padStart(2,'0')}}function startLoadingTimers(){{let start=Date.now();setInterval(()=>{{let s=Math.floor((Date.now()-start)/1000);document.querySelectorAll('[data-loading-label]').forEach(el=>{{el.textContent=el.getAttribute('data-loading-label')+' '+fmt(s)}})}},1000)}}function startConfirmCountdown(){{let b=document.getElementById('confirm-match');if(!b)return;let left=10;b.disabled=true;b.textContent='System matching '+left+'s';let timer=setInterval(()=>{{left--;if(left>0){{b.textContent='System matching '+left+'s'}}else{{clearInterval(timer);b.disabled=false;b.textContent='Confirm and match gasket records'}}}},1000)}}document.addEventListener('change',updateTotal);window.addEventListener('load',updateTotal);window.addEventListener('load',startLoadingTimers);window.addEventListener('load',startConfirmCountdown);function pollProductStatus(){{let el=document.querySelector('[data-refresh-product]');if(!el)return;let id=el.getAttribute('data-refresh-product');let wantsImage=el.getAttribute('data-needs-image')==='1';let wantsGasket=el.getAttribute('data-needs-gasket')==='1';if(!wantsImage&&!wantsGasket)return;setInterval(async()=>{{try{{let r=await fetch('/product-status?product_id='+encodeURIComponent(id),{{cache:'no-store'}});let d=await r.json();if((wantsImage&&d.product_image_url)||(wantsGasket&&d.quote_item_count>0))window.location.reload();}}catch(e){{}}}},2000)}}window.addEventListener('load',pollProductStatus)</script>
 </body></html>""".encode("utf-8")
 
 
@@ -538,7 +545,7 @@ def render_confirm_nameplate(upload_url: str, customer: dict, nameplate_data: di
 <input type="hidden" name="customer_phone" value="{esc(customer.get('customer_phone') or '')}">
 <div class="grid"><div><label>Brand</label><input name="brand" value="{esc(brand or '')}"></div><div><label>Model</label><input name="equipment_model" value="{esc(model or '')}"></div><div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div><div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or '')}"></div><div><label>Manufacture date</label><input name="manufacture_date" value="{esc(nameplate_data.get('manufacture_date') or '')}"></div><div><label>Refrigerant</label><input name="refrigerant" value="{esc(nameplate_data.get('refrigerant') or '')}"></div><div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div></div>
 <label>Raw text</label><textarea name="raw_text" style="width:100%;min-height:110px;border:1px solid #dbe2ea;border-radius:6px;padding:10px">{esc(raw_text)}</textarea>
-<p><button type="submit">Confirm and match database</button> <a class="button" href="/">Upload another</a></p>
+<p><button id="confirm-match" type="submit" disabled>Please wait 10s</button> <a class="button" href="/">Upload another</a></p>
 </form></div></section>""")
 
 
@@ -725,6 +732,17 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.send_html(render_home(f"Nameplate recognition failed: {exc}"), HTTPStatus.BAD_REQUEST)
                 return
+            prefill_brand = nameplate_data.get("brand") or brand
+            prefill_model = nameplate_data.get("model") or model
+            if prefill_brand and prefill_model:
+                try:
+                    from instant_enrichment import start_instant_enrichment, upsert_known_product_from_nameplate
+
+                    with httpx.Client(timeout=20) as client:
+                        product = upsert_known_product_from_nameplate(client, prefill_brand, prefill_model, nameplate_data)
+                        start_instant_enrichment(product["id"], nameplate_data)
+                except Exception as exc:
+                    print(f"instant pre-enrichment failed for {prefill_brand} {prefill_model}: {exc}")
             self.send_html(render_confirm_nameplate(upload_url, customer, nameplate_data, brand, model))
             return
 
@@ -747,11 +765,12 @@ class Handler(BaseHTTPRequestHandler):
             if not product:
                 product = create_product_from_confirmed_model(client, brand, model)
             try:
-                from ai_product_research import enrich_confirmed_product
+                from instant_enrichment import start_instant_enrichment, upsert_known_product_from_nameplate
 
-                product = enrich_confirmed_product(client, product, nameplate_data, force=True)
+                product = upsert_known_product_from_nameplate(client, brand, model, nameplate_data, status="customer_confirmed")
+                start_instant_enrichment(product["id"], nameplate_data)
             except Exception as exc:
-                print(f"AI product research failed for {brand} {model}: {exc}")
+                print(f"instant enrichment start failed for {brand} {model}: {exc}")
             request = create_request(client, customer, upload_url, brand, model, product, nameplate_data)
             positions = [] if is_unconfirmed_new_product(product) else infer_door_positions(product)
             if positions:

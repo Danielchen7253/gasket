@@ -25,6 +25,13 @@ def _install_patch(g):
     esc = g["esc"]
 
     def patched_trigger_background_refresh(product_id: int, need_image: bool, need_gaskets: bool) -> None:
+        try:
+            if need_image or need_gaskets:
+                from instant_enrichment import start_instant_enrichment
+
+                start_instant_enrichment(product_id)
+        except Exception as exc:
+            print(f"instant enrichment trigger failed for {product_id}: {exc}", flush=True)
         return
         refreshing = g["BACKGROUND_REFRESHING"]
         if product_id in refreshing:
@@ -90,6 +97,17 @@ def _install_patch(g):
             html = html.replace(
                 "<script>function updateTotal(){",
                 "<script>function fmt(s){let m=Math.floor(s/60),r=s%60;return String(m).padStart(2,'0')+':'+String(r).padStart(2,'0')}function startLoadingTimers(){let start=Date.now();setInterval(()=>{let s=Math.floor((Date.now()-start)/1000);document.querySelectorAll('[data-loading-label]').forEach(el=>{el.textContent=el.getAttribute('data-loading-label')+' '+fmt(s)})},1000)}function updateTotal(){",
+                1,
+            )
+        if "function startConfirmCountdown" not in html:
+            html = html.replace(
+                "function updateTotal(){",
+                "function startConfirmCountdown(){let b=document.getElementById('confirm-match');if(!b)return;let left=10;b.disabled=true;b.textContent='System matching '+left+'s';let timer=setInterval(()=>{left--;if(left>0){b.textContent='System matching '+left+'s'}else{clearInterval(timer);b.disabled=false;b.textContent='Confirm and match gasket records'}},1000)}function updateTotal(){",
+                1,
+            )
+            html = html.replace(
+                "window.addEventListener('load',updateTotal);",
+                "window.addEventListener('load',updateTotal);window.addEventListener('load',startConfirmCountdown);",
                 1,
             )
             html = html.replace(

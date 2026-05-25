@@ -74,7 +74,7 @@ def _patched_install(g):
 </div>
 <input type="hidden" name="door_positions_json" value="{esc(door_positions_value)}">
 <input type="hidden" name="raw_text" value="{esc(raw_text)}">
-<p><button type="submit">Confirm and match gasket records</button> <a class="button" href="/">Upload another</a></p>
+<p><button id="confirm-match" type="submit" disabled>Please wait 10s</button> <a class="button" href="/">Upload another</a></p>
 </form></div></section>""")
 
     def patched_render_home(message=""):
@@ -158,17 +158,6 @@ main{max-width:none;padding:0}
     def patched_render_result(product, quote_items, request, upload_url):
         nameplate_data = (request or {}).get("nameplate_data") or {}
         pending_new = g["is_unconfirmed_new_product"](product)
-        if not product.get("product_image_url"):
-            try:
-                with httpx.Client(timeout=15) as client:
-                    from fast_image_patch import quick_promote_product_image
-
-                    if quick_promote_product_image(client, product):
-                        refreshed = g["get_product"](client, product["id"])
-                        if refreshed:
-                            product = refreshed
-            except Exception as exc:
-                print(f"fast product image render refresh failed for {product['id']}: {exc}")
         g["trigger_background_refresh"](product["id"], not product.get("product_image_url"), not quote_items)
         product_img = product.get("product_image_url")
         needs_image = not bool(product_img)
@@ -259,6 +248,17 @@ main{max-width:none;padding:0}
             except Exception as exc:
                 self.send_html(g["render_home"](f"Nameplate recognition failed: {exc}"), HTTPStatus.BAD_REQUEST)
                 return
+            prefill_brand = nameplate_data.get("brand") or brand
+            prefill_model = nameplate_data.get("model") or model
+            if prefill_brand and prefill_model:
+                try:
+                    from instant_enrichment import start_instant_enrichment, upsert_known_product_from_nameplate
+
+                    with httpx.Client(timeout=20) as client:
+                        product = upsert_known_product_from_nameplate(client, prefill_brand, prefill_model, nameplate_data)
+                        start_instant_enrichment(product["id"], nameplate_data)
+                except Exception as exc:
+                    print(f"instant pre-enrichment failed for {prefill_brand} {prefill_model}: {exc}")
             self.send_html(g["render_confirm_nameplate"](upload_url, customer, nameplate_data, brand, model))
             return
 
@@ -326,11 +326,12 @@ main{max-width:none;padding:0}
                 if updated_rows:
                     product = updated_rows[0]
             try:
-                from ai_product_research import enrich_confirmed_product
+                from instant_enrichment import start_instant_enrichment, upsert_known_product_from_nameplate
 
-                product = enrich_confirmed_product(client, product, nameplate_data, force=True)
+                product = upsert_known_product_from_nameplate(client, brand, model, nameplate_data, status="customer_confirmed")
+                start_instant_enrichment(product["id"], nameplate_data)
             except Exception as exc:
-                print(f"AI product research failed for {brand} {model}: {exc}")
+                print(f"instant enrichment start failed for {brand} {model}: {exc}")
             request = g["create_request"](client, customer, upload_url, brand, model, product, nameplate_data)
             if not g["is_unconfirmed_new_product"](product):
                 positions = g["infer_door_positions"](product)
@@ -350,14 +351,6 @@ main{max-width:none;padding:0}
                 with httpx.Client(timeout=30) as client:
                     product = g["get_product"](client, product_id)
                     quote_items = g["get_quote_items"](client, product_id) if product else []
-                    if product and not product.get("product_image_url"):
-                        try:
-                            from fast_image_patch import quick_promote_product_image
-
-                            if quick_promote_product_image(client, product):
-                                product = g["get_product"](client, product_id)
-                        except Exception as exc:
-                            print(f"fast product image refresh failed for {product_id}: {exc}")
                 if product:
                     g["trigger_background_refresh"](product_id, not product.get("product_image_url"), not quote_items)
                 data = {
