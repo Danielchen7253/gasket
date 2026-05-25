@@ -569,9 +569,41 @@ def replace_flat_gaskets(client: httpx.Client, product_id: int, research: dict[s
         headers=supabase_headers("return=minimal"),
     )
     response.raise_for_status()
+    flat_columns = [
+        "refrigerator_product_id",
+        "door_index",
+        "door_position",
+        "door_position_display",
+        "gasket_name",
+        "part_number",
+        "universal_part_number",
+        "width_in",
+        "height_in",
+        "perimeter_in",
+        "dimensions_text",
+        "gasket_color",
+        "gasket_install_type",
+        "gasket_profile",
+        "gasket_image_url",
+        "profile_image_url",
+        "size_status",
+        "source_name",
+        "source_url",
+        "evidence_summary",
+        "confidence_score",
+        "needs_customer_confirmation",
+        "customer_confirmation_note",
+        "base_price_usd",
+        "market_price_usd",
+        "final_price_usd",
+        "pricing_note",
+        "data_status",
+        "is_verified",
+        "updated_at",
+    ]
     rows = []
     for row in gaskets:
-        item = dict(row)
+        item = {column: row.get(column) for column in flat_columns}
         item["refrigerator_product_id"] = product_id
         item["updated_at"] = datetime.now(timezone.utc).isoformat()
         rows.append(item)
