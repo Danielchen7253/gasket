@@ -455,6 +455,29 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
 def update_product(client: httpx.Client, product_id: int, research: dict[str, Any]) -> dict[str, Any]:
     product = research["product"]
     now = datetime.now(timezone.utc).isoformat()
+    existing_response = client.get(
+        f"{SUPABASE_URL}/rest/v1/refrigerator_products",
+        headers=supabase_headers(),
+        params={
+            "id": f"eq.{product_id}",
+            "select": "data_status,data_confidence,data_source_summary,door_count,door_layout,door_positions,door_layout_confidence,door_layout_source,product_type",
+            "limit": "1",
+        },
+    )
+    existing_response.raise_for_status()
+    existing_rows = existing_response.json()
+    existing = existing_rows[0] if existing_rows else {}
+    new_confidence = clamp_score(product.get("confidence_score"), 80)
+    new_door_confidence = clamp_score(product.get("door_layout_confidence") or product.get("confidence_score"), 80)
+    existing_confidence = float(existing.get("data_confidence") or 0)
+    existing_door_confidence = float(existing.get("door_layout_confidence") or existing_confidence or 0)
+    existing_status = str(existing.get("data_status") or "")
+    existing_source = str(existing.get("door_layout_source") or "")
+    protect_existing_layout = (
+        existing_status.startswith("manual_")
+        or existing_source.startswith("manual_")
+        or (existing.get("door_positions") and existing_door_confidence >= new_door_confidence + 5)
+    )
     payload = {
         "manufacturer": product.get("manufacturer"),
         "product_type": product.get("product_type"),
@@ -466,17 +489,29 @@ def update_product(client: httpx.Client, product_id: int, research: dict[str, An
         "model_year_start": as_int(product.get("model_year_start")),
         "model_year_end": as_int(product.get("model_year_end")),
         "data_status": "ai_structured",
-        "data_confidence": clamp_score(product.get("confidence_score"), 80),
+        "data_confidence": new_confidence,
         "last_enriched_at": now,
         "data_source_summary": product.get("source_summary") or "AI structured web research.",
         "door_count": as_int(product.get("door_count")),
         "door_layout": product.get("door_layout"),
         "door_positions": product.get("door_positions") or [],
-        "door_layout_confidence": clamp_score(product.get("door_layout_confidence") or product.get("confidence_score"), 80),
+        "door_layout_confidence": new_door_confidence,
         "door_layout_source": "ai_structured_web_research",
         "door_layout_updated_at": now,
         "updated_at": now,
     }
+    if existing_status.startswith("manual_") and existing_confidence >= new_confidence:
+        payload["data_status"] = existing.get("data_status")
+        payload["data_confidence"] = existing.get("data_confidence")
+        payload["data_source_summary"] = existing.get("data_source_summary") or payload["data_source_summary"]
+    if protect_existing_layout:
+        payload["product_type"] = existing.get("product_type") or payload["product_type"]
+        payload["door_count"] = existing.get("door_count")
+        payload["door_layout"] = existing.get("door_layout")
+        payload["door_positions"] = existing.get("door_positions")
+        payload["door_layout_confidence"] = existing.get("door_layout_confidence")
+        payload["door_layout_source"] = existing.get("door_layout_source")
+        payload["door_layout_updated_at"] = now
     if product.get("product_image_url"):
         payload.update(
             {

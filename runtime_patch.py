@@ -48,7 +48,6 @@ def _patched_install(g):
         model = nameplate_data.get("model") or fallback_model
         product = _product_prefill(brand, model)
         raw_text = nameplate_data.get("raw_text") or ""
-        door_positions_value = _door_positions_text(product)
         return g["page"]("Confirm Nameplate", f"""
 <section><h2>Confirm refrigerator information</h2>
 <p>Check the nameplate and product information. Correct anything wrong before matching gasket records.</p>
@@ -72,7 +71,6 @@ def _patched_install(g):
 <div><label>Product image URL</label><input name="product_image_url" value="{esc(product.get('product_image_url') or '')}"></div>
 <div><label>Active / discontinued status</label><input name="lifecycle_status" value="{esc(product.get('lifecycle_status') or '')}"></div>
 </div>
-<input type="hidden" name="door_positions_json" value="{esc(door_positions_value)}">
 <input type="hidden" name="raw_text" value="{esc(raw_text)}">
 <p><button id="confirm-match" type="submit" disabled>Please wait 10s</button> <a class="button" href="/">Upload another</a></p>
 </form></div></section>""")
@@ -304,18 +302,6 @@ main{max-width:none;padding:0}
             door_count_text = fields.get("door_count", {}).get("text") or ""
             if door_count_text.strip().isdigit():
                 update_payload["door_count"] = int(door_count_text.strip())
-            door_positions_raw = fields.get("door_positions_json", {}).get("text") or ""
-            if door_positions_raw.strip():
-                try:
-                    import json
-
-                    parsed_positions = json.loads(door_positions_raw)
-                    if isinstance(parsed_positions, list):
-                        update_payload["door_positions"] = parsed_positions
-                        update_payload["door_layout_source"] = "customer_confirmed_form"
-                        update_payload["door_layout_updated_at"] = g["datetime"].now(g["timezone"].utc).isoformat()
-                except Exception:
-                    pass
             clean_payload = {key: value for key, value in update_payload.items() if value not in (None, "")}
             if clean_payload:
                 response = client.patch(
@@ -338,12 +324,6 @@ main{max-width:none;padding:0}
             except Exception as exc:
                 print(f"instant enrichment start failed for {brand} {model}: {exc}")
             request = g["create_request"](client, customer, upload_url, brand, model, product, nameplate_data)
-            if not g["is_unconfirmed_new_product"](product):
-                positions = g["infer_door_positions"](product)
-                if positions:
-                    g["save_inferred_door_layout"](client, product, positions)
-                    product["door_positions"] = positions
-                    product["door_count"] = len(positions)
             self.send_html(g["render_result"](product, g["get_quote_items"](client, product["id"]), request, upload_url))
 
     old_do_GET = g["Handler"].do_GET
