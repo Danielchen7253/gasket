@@ -54,6 +54,25 @@ def _install_patch(g):
 {plate}<div class="facts"><div>Brand read</div><div><strong>{esc(brand or 'Not found')}</strong></div><div>Model read</div><div><strong>{esc(model or 'Not found')}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Raw text</div><div>{esc(nameplate_data.get('raw_text') or '')}</div></div>
 <p><a class="button" href="/">Try another nameplate</a></p></section>""")
 
+    def patched_render_home(message=""):
+        warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
+        upload_style = """
+<style>
+.upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}
+.upload-row button{width:auto;white-space:nowrap}
+.home-form .grid{margin-top:12px}
+@media(max-width:860px){.upload-row{grid-template-columns:1fr}.upload-row button{width:100%;justify-content:center}}
+</style>"""
+        return g["page"]("Gasket Match", f"""
+{upload_style}
+<section class="hero"><div><h1>Find the Right Refrigerator Door Gasket Fast</h1>
+<p>Upload the equipment nameplate. We read it first, you confirm the details, then the site matches the live database.</p>
+<div class="summary"><div class="metric"><span>Step 1</span><strong>Upload</strong></div><div class="metric"><span>Step 2</span><strong>Confirm</strong></div><div class="metric"><span>Step 3</span><strong>Match</strong></div></div>
+</div><form class="home-form" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
+<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>
+<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div><div><label>Customer name</label><input name="customer_name"></div></div>
+<p class="muted">You can correct the brand or model before matching the database.</p></form></section>""")
+
     def patched_render_result(product, quote_items, request, upload_url):
         nameplate_data = (request or {}).get("nameplate_data") or {}
         pending_new = g["is_unconfirmed_new_product"](product)
@@ -101,6 +120,7 @@ def _install_patch(g):
 
     g["page"] = patched_page
     g["is_unconfirmed_new_product"] = patched_is_unconfirmed_new_product
+    g["render_home"] = patched_render_home
     g["render_no_match"] = patched_render_no_match
     g["render_result"] = patched_render_result
     _PATCHED = True
