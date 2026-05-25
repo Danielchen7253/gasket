@@ -24,6 +24,58 @@ def _install_patch(g):
     old_page = g["page"]
     esc = g["esc"]
 
+    def patched_trigger_background_refresh(product_id: int, need_image: bool, need_gaskets: bool) -> None:
+        refreshing = g["BACKGROUND_REFRESHING"]
+        if product_id in refreshing:
+            return
+        if not need_image and not need_gaskets:
+            return
+        refreshing.add(product_id)
+
+        def worker() -> None:
+            try:
+                with g["httpx"].Client(timeout=60) as client:
+                    product = g["get_product"](client, product_id)
+                    if not product:
+                        return
+                    if need_image and not product.get("product_image_url"):
+                        try:
+                            from product_image_search_crawler import (
+                                get_existing_candidates,
+                                promote_best_image,
+                                search_google_cse,
+                                search_public_web_images,
+                                search_serpapi,
+                                upsert_candidate,
+                            )
+                            from fast_image_patch import quick_promote_product_image
+
+                            promoted = quick_promote_product_image(client, product)
+                            if not promoted:
+                                saved = get_existing_candidates(client, product_id)
+                                promoted = promote_best_image(client, product, saved)
+                            if not promoted:
+                                raw = []
+                                raw.extend(search_serpapi(client, product))
+                                raw.extend(search_google_cse(client, product))
+                                if not raw:
+                                    raw.extend(search_public_web_images(client, product))
+                                saved = [upsert_candidate(client, product, row) for row in raw[:20]]
+                                promote_best_image(client, product, saved)
+                        except Exception as exc:
+                            print(f"background image refresh failed for {product_id}: {exc}")
+                    if need_gaskets:
+                        try:
+                            from gasket_spec_refresher import refresh_product_gasket_spec
+
+                            refresh_product_gasket_spec(client, product_id)
+                        except Exception as exc:
+                            print(f"background gasket refresh failed for {product_id}: {exc}")
+            finally:
+                refreshing.discard(product_id)
+
+        g["threading"].Thread(target=worker, daemon=True).start()
+
     def patched_is_unconfirmed_new_product(product):
         return (
             not product.get("product_image_url")
@@ -44,6 +96,7 @@ def _install_patch(g):
                 "window.addEventListener('load',updateTotal);window.addEventListener('load',startLoadingTimers);",
                 1,
             )
+        html = html.replace("}},5000)}}window.addEventListener('load',pollProductStatus)", "}},2000)}}window.addEventListener('load',pollProductStatus)")
         return html.encode("utf-8")
 
     def patched_render_no_match(brand, model, upload_url, nameplate_data):
@@ -164,6 +217,7 @@ main{max-width:none;padding:0}
 <div class="checkout"><strong>Ready to order?</strong><br><span class="muted">Select the gasket solution for this refrigerator.</span></div>""")
 
     g["page"] = patched_page
+    g["trigger_background_refresh"] = patched_trigger_background_refresh
     g["is_unconfirmed_new_product"] = patched_is_unconfirmed_new_product
     g["render_home"] = patched_render_home
     g["render_no_match"] = patched_render_no_match
