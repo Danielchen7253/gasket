@@ -15,6 +15,16 @@ _old_install_patch = sitecustomize._install_patch
 def _patched_install(g):
     _old_install_patch(g)
     esc = g["esc"]
+    original_is_customer_visible_gasket = g["is_customer_visible_gasket"]
+
+    def patched_is_customer_visible_gasket(item):
+        name = (item.get("gasket_name") or "").lower()
+        image = (item.get("gasket_image_url") or "").lower()
+        if "search result" in name or "logo" in image:
+            return False
+        if item.get("data_status") == "ai_structured" and item.get("door_position_display"):
+            return True
+        return original_is_customer_visible_gasket(item)
 
     def _product_prefill(brand, model):
         if not model:
@@ -176,17 +186,21 @@ main{max-width:none;padding:0}
             else f"<div class='photo loading'><span data-loading-label='{product_loading}'>{product_loading} 00:00</span></div>"
         )
         plate_html = f"<img class='plate' src='{esc(upload_url)}' alt='Uploaded nameplate'>" if upload_url else "<div class='plate muted'>Nameplate photo</div>"
+        source_summary = product.get("data_source_summary") or ""
         door_positions = product.get("door_positions") if isinstance(product.get("door_positions"), list) else []
         door_text = ", ".join([item.get("label") or item.get("key") or "" for item in door_positions if item]) or "Loading"
+        confidence = product.get("data_confidence") or product.get("door_layout_confidence") or ""
         product_facts = f"""
 <div class="facts">
 <div>Product type</div><div><strong>{esc(product.get('product_type') or 'Loading')}</strong></div>
 <div>Door layout</div><div>{esc(door_text)}</div>
 <div>Status</div><div>{esc(product.get('lifecycle_status') or 'unknown')}</div>
 </div>"""
+
         rows = []
         if pending_new and not quote_items:
             rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
+
         for index, item in enumerate(quote_items, start=1):
             door_label = item.get("door_position_display") or "Door position loading"
             door_key = item.get("door_position") or f"door_{index}"
@@ -206,8 +220,10 @@ main{max-width:none;padding:0}
             confidence_line = f"<br>Confidence: {esc(item.get('confidence_score'))}%" if item.get("confidence_score") is not None else ""
             evidence = f"<br><span class='muted'>{esc(item.get('evidence_summary'))}</span>" if item.get("evidence_summary") else ""
             rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)}</strong><p>{esc(dims)}{size_note}{part_line}{color_line}{install_line}{confidence_line}{confirm_line}{evidence}</p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div><div></div></label>""")
+
         if not quote_items and not pending_new:
             rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
+
         summary_html = "" if pending_new else f"""<div class="summary"><div class="metric"><span>Door positions</span><strong>{len(quote_items)}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
         rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
         return g["page"]("Matched Gasket Quote", f"""
@@ -357,6 +373,7 @@ main{max-width:none;padding:0}
                 return
         old_do_GET(self)
 
+    g["is_customer_visible_gasket"] = patched_is_customer_visible_gasket
     g["get_quote_items"] = patched_get_quote_items
     g["render_home"] = patched_render_home
     g["render_confirm_nameplate"] = patched_render_confirm_nameplate

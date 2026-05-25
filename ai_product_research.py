@@ -60,6 +60,7 @@ RESEARCH_JSON_SCHEMA = {
         },
         "gaskets": {
             "type": "array",
+            "minItems": 1,
             "items": {
                 "type": "object",
                 "additionalProperties": True,
@@ -86,6 +87,7 @@ RESEARCH_JSON_SCHEMA = {
                     "needs_customer_confirmation": {"type": ["boolean", "null"]},
                     "customer_confirmation_note": {"type": ["string", "null"]},
                 },
+                "required": ["door_index", "door_position", "door_position_display", "gasket_name"],
             },
         },
     },
@@ -386,6 +388,26 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
         if not product.get("door_layout"):
             product["door_layout"] = "_".join([str(len(positions)), "door"])
 
+    if not gaskets and positions:
+        gaskets = [
+            {
+                "door_index": index,
+                "door_position": position["key"],
+                "door_position_display": position["label"],
+                "gasket_name": f"{position['label']} gasket",
+                "dimensions_text": "Customer measurement required",
+                "gasket_install_type": "magnetic gasket",
+                "size_status": "unknown",
+                "source_name": "AI structured product match",
+                "source_url": product.get("official_product_url") or product.get("manual_url"),
+                "evidence_summary": "Product door position identified; gasket detail still requires confirmation.",
+                "confidence_score": 45,
+                "needs_customer_confirmation": True,
+                "customer_confirmation_note": "Confirm dimensions before production.",
+            }
+            for index, position in enumerate(positions, start=1)
+        ]
+
     normalized_gaskets = []
     for index, row in enumerate(gaskets, start=1):
         door_index = as_int(row.get("door_index")) or index
@@ -405,7 +427,7 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
                 "width_in": width,
                 "height_in": height,
                 "perimeter_in": round(2 * (width + height), 3) if width and height else None,
-                "dimensions_text": row.get("dimensions_text"),
+                "dimensions_text": row.get("dimensions_text") or ("Customer measurement required" if not (width and height) else None),
                 "gasket_color": row.get("gasket_color"),
                 "gasket_install_type": row.get("gasket_install_type"),
                 "gasket_profile": row.get("gasket_profile"),
