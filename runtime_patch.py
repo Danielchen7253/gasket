@@ -16,6 +16,56 @@ def _patched_install(g):
     _old_install_patch(g)
     esc = g["esc"]
 
+    def _product_prefill(brand, model):
+        if not model:
+            return {}
+        try:
+            with httpx.Client(timeout=15) as client:
+                return g["find_product"](client, brand or "", model or "") or {}
+        except Exception:
+            return {}
+
+    def _door_positions_text(product):
+        positions = product.get("door_positions")
+        if isinstance(positions, list) and positions:
+            import json
+            return json.dumps(positions, ensure_ascii=False)
+        return ""
+
+    def patched_render_confirm_nameplate(upload_url, customer, nameplate_data, fallback_brand="", fallback_model=""):
+        brand = nameplate_data.get("brand") or fallback_brand
+        model = nameplate_data.get("model") or fallback_model
+        product = _product_prefill(brand, model)
+        raw_text = nameplate_data.get("raw_text") or ""
+        door_positions_value = _door_positions_text(product)
+        return g["page"]("Confirm Nameplate", f"""
+<section><h2>Confirm refrigerator information</h2>
+<p>Check the nameplate and product information. Correct anything wrong before matching gasket records.</p>
+<div class="result-grid"><div><h3>Nameplate photo</h3><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></div>
+<form method="post" action="/match" enctype="multipart/form-data"><h3>Read information</h3>
+<input type="hidden" name="upload_url" value="{esc(upload_url)}">
+<input type="hidden" name="customer_name" value="{esc(customer.get('customer_name') or '')}">
+<input type="hidden" name="customer_email" value="{esc(customer.get('customer_email') or '')}">
+<input type="hidden" name="customer_phone" value="{esc(customer.get('customer_phone') or '')}">
+<div class="grid">
+<div><label>Brand</label><input name="brand" value="{esc(brand or product.get('brand') or '')}"></div>
+<div><label>Model</label><input name="equipment_model" value="{esc(model or product.get('equipment_model') or '')}"></div>
+<div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div>
+<div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or product.get('manufacturer') or '')}"></div>
+<div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div>
+<div><label>Refrigerant</label><input name="refrigerant" value="{esc(nameplate_data.get('refrigerant') or '')}"></div>
+<div><label>Manufacture date</label><input name="manufacture_date" value="{esc(nameplate_data.get('manufacture_date') or product.get('manufacture_date_text') or '')}"></div>
+<div><label>Product type</label><input name="product_type" value="{esc(product.get('product_type') or '')}"></div>
+<div><label>Door count</label><input name="door_count" value="{esc(product.get('door_count') or '')}"></div>
+<div><label>Door layout</label><input name="door_layout" value="{esc(product.get('door_layout') or '')}"></div>
+<div><label>Product image URL</label><input name="product_image_url" value="{esc(product.get('product_image_url') or '')}"></div>
+<div><label>Active / discontinued status</label><input name="lifecycle_status" value="{esc(product.get('lifecycle_status') or '')}"></div>
+</div>
+<label>Door positions JSON</label><textarea name="door_positions_json" style="width:100%;min-height:78px;border:1px solid #dbe2ea;border-radius:6px;padding:10px">{esc(door_positions_value)}</textarea>
+<label>Raw text</label><textarea name="raw_text" style="width:100%;min-height:110px;border:1px solid #dbe2ea;border-radius:6px;padding:10px">{esc(raw_text)}</textarea>
+<p><button type="submit">Confirm and match gasket records</button> <a class="button" href="/">Upload another</a></p>
+</form></div></section>""")
+
     def patched_get_quote_items(client, product_id):
         response = client.get(
             f"{g['SUPABASE_URL']}/rest/v1/refrigerator_product_quote_items"
@@ -148,6 +198,49 @@ def _patched_install(g):
             product = g["find_product"](client, brand, model)
             if not product:
                 product = g["create_product_from_confirmed_model"](client, brand, model)
+            update_payload = {
+                "manufacturer": fields.get("manufacturer", {}).get("text") or product.get("manufacturer"),
+                "product_type": fields.get("product_type", {}).get("text") or product.get("product_type"),
+                "door_layout": fields.get("door_layout", {}).get("text") or product.get("door_layout"),
+                "product_image_url": fields.get("product_image_url", {}).get("text") or product.get("product_image_url"),
+                "lifecycle_status": fields.get("lifecycle_status", {}).get("text") or product.get("lifecycle_status"),
+                "data_status": product.get("data_status") or "customer_confirmed",
+                "data_confidence": product.get("data_confidence") or 70,
+                "data_source_summary": product.get("data_source_summary") or "Customer-confirmed nameplate and product information.",
+                "updated_at": g["datetime"].now(g["timezone"].utc).isoformat(),
+                "last_enriched_at": g["datetime"].now(g["timezone"].utc).isoformat(),
+            }
+            manufacture_date_text = fields.get("manufacture_date", {}).get("text") or ""
+            if manufacture_date_text:
+                if __import__("re").match(r"^\d{4}-\d{2}-\d{2}$", manufacture_date_text):
+                    update_payload["manufacture_date"] = manufacture_date_text
+                else:
+                    update_payload["manufacture_date_text"] = manufacture_date_text
+            door_count_text = fields.get("door_count", {}).get("text") or ""
+            if door_count_text.strip().isdigit():
+                update_payload["door_count"] = int(door_count_text.strip())
+            door_positions_raw = fields.get("door_positions_json", {}).get("text") or ""
+            if door_positions_raw.strip():
+                try:
+                    import json
+                    parsed_positions = json.loads(door_positions_raw)
+                    if isinstance(parsed_positions, list):
+                        update_payload["door_positions"] = parsed_positions
+                        update_payload["door_layout_source"] = "customer_confirmed_form"
+                        update_payload["door_layout_updated_at"] = g["datetime"].now(g["timezone"].utc).isoformat()
+                except Exception:
+                    pass
+            clean_payload = {key: value for key, value in update_payload.items() if value not in (None, "")}
+            if clean_payload:
+                response = client.patch(
+                    f"{g['SUPABASE_URL']}/rest/v1/refrigerator_products?id=eq.{product['id']}",
+                    headers=g["supabase_headers"]("return=representation"),
+                    json=clean_payload,
+                )
+                response.raise_for_status()
+                updated_rows = response.json()
+                if updated_rows:
+                    product = updated_rows[0]
             request = g["create_request"](client, customer, upload_url, brand, model, product, nameplate_data)
             if not g["is_unconfirmed_new_product"](product):
                 positions = g["infer_door_positions"](product)
@@ -158,6 +251,7 @@ def _patched_install(g):
             self.send_html(g["render_result"](product, g["get_quote_items"](client, product["id"]), request, upload_url))
 
     g["get_quote_items"] = patched_get_quote_items
+    g["render_confirm_nameplate"] = patched_render_confirm_nameplate
     g["render_result"] = patched_render_result
     g["Handler"].do_POST = patched_do_POST
 
