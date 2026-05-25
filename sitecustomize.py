@@ -96,7 +96,7 @@ def _install_patch(g):
                 "window.addEventListener('load',updateTotal);window.addEventListener('load',startLoadingTimers);",
                 1,
             )
-        html = html.replace("}},5000)}}window.addEventListener('load',pollProductStatus)", "}},2000)}}window.addEventListener('load',pollProductStatus)")
+        html = html.replace("},5000)}window.addEventListener('load',pollProductStatus)", "},2000)}window.addEventListener('load',pollProductStatus)")
         return html.encode("utf-8")
 
     def patched_render_no_match(brand, model, upload_url, nameplate_data):
@@ -216,12 +216,38 @@ main{max-width:none;padding:0}
 <section><h2>Gasket quote</h2>{summary_html}<div>{rows_html}</div></section>
 <div class="checkout"><strong>Ready to order?</strong><br><span class="muted">Select the gasket solution for this refrigerator.</span></div>""")
 
+    old_do_GET = g["Handler"].do_GET
+
+    def patched_do_GET(self):
+        parsed = g["urlparse"](self.path)
+        if parsed.path == "/product-status":
+            product_id = int(g["parse_qs"](parsed.query).get("product_id", ["0"])[0])
+            if product_id:
+                with g["httpx"].Client(timeout=30) as client:
+                    product = g["get_product"](client, product_id)
+                    quote_items = g["get_quote_items"](client, product_id) if product else []
+                if product:
+                    g["trigger_background_refresh"](product_id, not product.get("product_image_url"), not quote_items)
+                data = {
+                    "product_image_url": product.get("product_image_url") if product else None,
+                    "quote_item_count": len(quote_items),
+                }
+                payload = g["json"].dumps(data).encode("utf-8")
+                self.send_response(g["HTTPStatus"].OK)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+        old_do_GET(self)
+
     g["page"] = patched_page
     g["trigger_background_refresh"] = patched_trigger_background_refresh
     g["is_unconfirmed_new_product"] = patched_is_unconfirmed_new_product
     g["render_home"] = patched_render_home
     g["render_no_match"] = patched_render_no_match
     g["render_result"] = patched_render_result
+    g["Handler"].do_GET = patched_do_GET
     _PATCHED = True
 
 
