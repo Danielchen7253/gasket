@@ -29,6 +29,7 @@ def _patched_install(g):
         positions = product.get("door_positions")
         if isinstance(positions, list) and positions:
             import json
+
             return json.dumps(positions, ensure_ascii=False)
         return ""
 
@@ -61,10 +62,29 @@ def _patched_install(g):
 <div><label>Product image URL</label><input name="product_image_url" value="{esc(product.get('product_image_url') or '')}"></div>
 <div><label>Active / discontinued status</label><input name="lifecycle_status" value="{esc(product.get('lifecycle_status') or '')}"></div>
 </div>
-<label>Door positions JSON</label><textarea name="door_positions_json" style="width:100%;min-height:78px;border:1px solid #dbe2ea;border-radius:6px;padding:10px">{esc(door_positions_value)}</textarea>
-<label>Raw text</label><textarea name="raw_text" style="width:100%;min-height:110px;border:1px solid #dbe2ea;border-radius:6px;padding:10px">{esc(raw_text)}</textarea>
+<input type="hidden" name="door_positions_json" value="{esc(door_positions_value)}">
+<input type="hidden" name="raw_text" value="{esc(raw_text)}">
 <p><button type="submit">Confirm and match gasket records</button> <a class="button" href="/">Upload another</a></p>
 </form></div></section>""")
+
+    def patched_render_home(message=""):
+        warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
+        upload_style = """
+<style>
+.upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}
+.upload-row button{width:auto;white-space:nowrap}
+.home-form .grid{margin-top:12px}
+@media(max-width:860px){.upload-row{grid-template-columns:1fr}.upload-row button{width:100%;justify-content:center}}
+</style>"""
+        return g["page"]("Gasket Match", f"""
+{upload_style}
+<section class="hero"><div><h1>Find the Right Refrigerator Door Gasket Fast</h1>
+<p>Upload the equipment nameplate. We read it first, you confirm the details, then the site matches the live database.</p>
+<div class="summary"><div class="metric"><span>Step 1</span><strong>Upload</strong></div><div class="metric"><span>Step 2</span><strong>Confirm</strong></div><div class="metric"><span>Step 3</span><strong>Match</strong></div></div>
+</div><form class="home-form" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
+<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>
+<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div><div><label>Customer name</label><input name="customer_name"></div></div>
+<p class="muted">You can correct the brand or model before matching the database.</p></form></section>""")
 
     def patched_get_quote_items(client, product_id):
         response = client.get(
@@ -223,6 +243,7 @@ def _patched_install(g):
             if door_positions_raw.strip():
                 try:
                     import json
+
                     parsed_positions = json.loads(door_positions_raw)
                     if isinstance(parsed_positions, list):
                         update_payload["door_positions"] = parsed_positions
@@ -251,6 +272,7 @@ def _patched_install(g):
             self.send_html(g["render_result"](product, g["get_quote_items"](client, product["id"]), request, upload_url))
 
     g["get_quote_items"] = patched_get_quote_items
+    g["render_home"] = patched_render_home
     g["render_confirm_nameplate"] = patched_render_confirm_nameplate
     g["render_result"] = patched_render_result
     g["Handler"].do_POST = patched_do_POST
