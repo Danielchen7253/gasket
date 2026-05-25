@@ -25,6 +25,12 @@ TASK_TABLE = "product_enrichment_tasks"
 
 RUNNING: set[int] = set()
 
+MODEL_ALIAS_OVERRIDES = {
+    ("SUBZERO", "685592"): "685/S/2",
+    ("SUBZERO", "68592"): "685/S/2",
+    ("SUBZERO", "685S2"): "685/S/2",
+}
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -50,6 +56,11 @@ def patch_product(client: httpx.Client, product_id: int, payload: dict[str, Any]
 
 
 def find_product(client: httpx.Client, brand: str, model: str) -> dict[str, Any] | None:
+    alias = MODEL_ALIAS_OVERRIDES.get((normalize_model(brand), normalize_model(model)))
+    if alias and normalize_model(alias) != normalize_model(model):
+        product = find_product(client, brand, alias)
+        if product:
+            return product
     variants = model_variants(model)
     brand_variants = [brand, brand.upper(), brand.title()]
     for brand_value in brand_variants:

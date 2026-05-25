@@ -232,6 +232,8 @@ main{max-width:none;padding:0}
         )
         brand = fields.get("brand", {}).get("text", "").strip()
         model = fields.get("equipment_model", {}).get("text", "").strip()
+        if "canonical_model_for_brand" in g:
+            model = g["canonical_model_for_brand"](brand, model)
         upload_url = fields.get("upload_url", {}).get("text", "").strip() or None
         file_field = fields.get("nameplate")
         customer = {key: fields.get(key, {}).get("text") or None for key in ("customer_name", "customer_email", "customer_phone")}
@@ -273,6 +275,7 @@ main{max-width:none;padding:0}
             "raw_text": fields.get("raw_text", {}).get("text") or "",
             "confidence": 100,
         }
+        nameplate_data["model"] = model or nameplate_data.get("model")
         if not brand or not model:
             self.send_html(g["render_confirm_nameplate"](upload_url or "", customer, nameplate_data, brand, model), HTTPStatus.BAD_REQUEST)
             return

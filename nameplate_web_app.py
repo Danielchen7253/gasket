@@ -29,6 +29,12 @@ UPLOAD_DIR = ROOT / "uploads" / "customer_nameplates"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 BACKGROUND_REFRESHING: set[int] = set()
 
+MODEL_ALIAS_OVERRIDES = {
+    ("SUBZERO", "685592"): "685/S/2",
+    ("SUBZERO", "68592"): "685/S/2",
+    ("SUBZERO", "685S2"): "685/S/2",
+}
+
 
 def esc(value) -> str:
     return "" if value is None else html.escape(str(value), quote=True)
@@ -62,6 +68,10 @@ def model_variants(value: str) -> list[str]:
             variants.add(f"{base}-{option}-{suffix}")
             variants.add(f"{base}{option}{suffix}")
     return [item for item in variants if item]
+
+
+def canonical_model_for_brand(brand: str, model: str) -> str:
+    return MODEL_ALIAS_OVERRIDES.get((normalize_model(brand), normalize_model(model)), model)
 
 
 def model_similarity_score(wanted: str, candidate: str) -> float:
@@ -225,6 +235,7 @@ def identify_nameplate(image_bytes: bytes, filename: str) -> dict:
 
 def find_product(client: httpx.Client, brand: str, model: str) -> dict | None:
     brand_q = (brand or "").replace("*", "")
+    model = canonical_model_for_brand(brand, model)
     model_q = (model or "").replace("*", "")
     if not model_q:
         return None
