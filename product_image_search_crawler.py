@@ -46,6 +46,16 @@ def normalized(value: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (value or "").upper())
 
 
+def model_family_tokens(model: str) -> list[str]:
+    value = normalized(model)
+    tokens = [value] if value else []
+    if len(value) > 2 and value[-2:].isdigit():
+        tokens.append(value[:-2])
+    if len(value) > 1 and value[-1].isdigit():
+        tokens.append(value[:-1])
+    return [token for index, token in enumerate(tokens) if token and token not in tokens[:index]]
+
+
 def get_products(client: httpx.Client, limit: int) -> list[dict]:
     missing_endpoint = (
         f"{SUPABASE_URL}/rest/v1/{PRODUCT_TABLE}"
@@ -77,6 +87,7 @@ def score_candidate(product: dict, candidate: dict) -> float:
     model = product["equipment_model"]
     brand_n = normalized(brand)
     model_n = normalized(model)
+    family_tokens = [token for token in model_family_tokens(model) if token != model_n]
     haystack = normalized(
         " ".join(
             str(candidate.get(key) or "")
@@ -89,8 +100,12 @@ def score_candidate(product: dict, candidate: dict) -> float:
         score += 30
     if model_n and model_n in haystack:
         score += 45
+    elif any(token and token in haystack for token in family_tokens):
+        score += 38
     if any(token in haystack for token in ["REFRIGERATOR", "FREEZER", "FRIDGE", "COOLER"]):
         score += 10
+    if any(token in haystack for token in ["FRENCHDOOR", "BOTTOMFREEZER", "SIDEBYSIDE", "REACHIN"]):
+        score += 6
     if any(token in haystack for token in ["LOGO", "ICON", "GASKET", "PART", "THUMBNAIL"]):
         score -= 20
     if any(token in haystack for token in ["SMALL", "THUMB", "TINY"]):
@@ -485,14 +500,47 @@ def is_usable_image(candidate: dict) -> bool:
     return True
 
 
+def image_quality_score(candidate: dict) -> float:
+    text = normalized(
+        " ".join(
+            str(candidate.get(key) or "")
+            for key in ["image_title", "title", "image_url", "page_url", "source_name"]
+        )
+    )
+    score = float(candidate.get("match_score") or 0)
+    if any(domain in text for domain in ["AJMADISON", "BESTBUY", "LOWES", "HOMEDEPOT", "CANADIANAPPLIANCE"]):
+        score += 8
+    if any(token in text for token in ["FRONTCLOSED", "FRONTCLOSE", "FRONT", "MAIN"]):
+        score += 5
+    if any(token in text for token in ["OPEN", "INTERIOR", "PARTS", "REVIEW"]):
+        score -= 4
+    width = int(candidate.get("image_width") or 0)
+    height = int(candidate.get("image_height") or 0)
+    if width and height:
+        score += min(6, max(width, height) / 250)
+    return score
+
+
 def promote_best_image(client: httpx.Client, product: dict, candidates: list[dict]) -> bool:
     usable = [candidate for candidate in candidates if is_usable_image(candidate)]
     if not usable:
         return False
-    best = max(usable, key=lambda row: float(row.get("match_score") or 0))
+    best = max(usable, key=image_quality_score)
     best_score = float(best.get("match_score") or 0)
     current_score = float(product.get("product_image_confidence") or 0)
-    if best_score <= current_score and product.get("product_image_url"):
+    current_candidate = {
+        "match_score": current_score,
+        "image_url": product.get("product_image_url"),
+        "page_url": product.get("product_image_source_url"),
+    }
+    if (
+        best_score < current_score
+        or (
+            best_score == current_score
+            and product.get("product_image_url")
+            and image_quality_score(best) <= image_quality_score(current_candidate)
+        )
+    ):
         return False
 
     endpoint = f"{SUPABASE_URL}/rest/v1/{PRODUCT_TABLE}?id=eq.{product['id']}"
