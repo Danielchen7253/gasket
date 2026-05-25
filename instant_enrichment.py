@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import os
 import re
 import threading
+import time
 from typing import Any
 
 import httpx
@@ -287,3 +288,19 @@ def start_instant_enrichment(product_id: int, nameplate_data: dict[str, Any] | N
             RUNNING.discard(product_id)
 
     threading.Thread(target=supervisor, daemon=True).start()
+
+
+def wait_for_core_result(product_id: int, max_seconds: float = 10.0) -> dict[str, Any]:
+    """Wait briefly for product structure or gasket records without blocking on images."""
+    deadline = time.time() + max_seconds
+    latest: dict[str, Any] = {"product": None, "gasket_count": 0}
+    while True:
+        with httpx.Client(timeout=15) as client:
+            product = get_product(client, product_id)
+            gasket_count = get_gasket_count(client, product_id) if product else 0
+        latest = {"product": product, "gasket_count": gasket_count}
+        if product and (gasket_count > 0 or product.get("door_positions") or product.get("door_count")):
+            return latest
+        if time.time() >= deadline:
+            return latest
+        time.sleep(1)

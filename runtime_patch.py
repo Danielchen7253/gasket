@@ -103,6 +103,8 @@ main{max-width:none;padding:0}
 .flow-step strong{display:block;margin-bottom:6px}
 .flow-step p{font-size:13px;line-height:1.35;margin:0;color:#687385}
 .home-form{background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
+.upload-working{margin-top:14px;border:1px solid #c9e7ea;background:#eefbfc;color:#0f1d24;border-radius:8px;padding:12px;line-height:1.45}
+.upload-working span{color:#687385}
 .upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}
 .upload-row button{width:auto;white-space:nowrap}
 .home-form .grid{grid-template-columns:1fr 1fr 1fr;margin-top:12px}
@@ -326,10 +328,13 @@ main{max-width:none;padding:0}
                 if updated_rows:
                     product = updated_rows[0]
             try:
-                from instant_enrichment import start_instant_enrichment, upsert_known_product_from_nameplate
+                from instant_enrichment import start_instant_enrichment, upsert_known_product_from_nameplate, wait_for_core_result
 
                 product = upsert_known_product_from_nameplate(client, brand, model, nameplate_data, status="customer_confirmed")
                 start_instant_enrichment(product["id"], nameplate_data)
+                waited = wait_for_core_result(product["id"], max_seconds=10)
+                if waited.get("product"):
+                    product = waited["product"]
             except Exception as exc:
                 print(f"instant enrichment start failed for {brand} {model}: {exc}")
             request = g["create_request"](client, customer, upload_url, brand, model, product, nameplate_data)
