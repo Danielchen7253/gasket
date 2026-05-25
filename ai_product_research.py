@@ -609,7 +609,10 @@ def enrich_confirmed_product(
         raise RuntimeError("AI research did not match confirmed model")
     normalized = normalize_research(research, brand, model)
     updated = update_product(client, product_id, normalized)
-    upsert_product_gasket_spec(client, product_id, normalized)
     replace_flat_gaskets(client, product_id, normalized)
+    try:
+        upsert_product_gasket_spec(client, product_id, normalized)
+    except Exception as exc:
+        print(f"compat product_gasket_specs upsert skipped for {brand} {model}: {exc}", flush=True)
     refresh_quote_items(client, product_id)
     return updated or product
