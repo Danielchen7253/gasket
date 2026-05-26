@@ -38,8 +38,8 @@ def _patched_install(g):
     def _model_check_notice():
         return """
 <div class="model-check-notice">
-<strong>Please check the model number carefully before continuing.</strong>
-AI may read a character incorrectly from the nameplate. Confirm the model in this box exactly matches the model printed on the label.
+<strong>Important: confirm the model number exactly.</strong>
+AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match the nameplate before you continue.
 </div>"""
 
     def _door_positions_text(product):
@@ -58,7 +58,7 @@ AI may read a character incorrectly from the nameplate. Confirm the model in thi
         return g["page"]("Confirm Nameplate", f"""
 <section><h2>Confirm refrigerator information</h2>
 <p>Check the nameplate and product information. Correct anything wrong before matching gasket records.</p>
-<div class="result-grid"><div><h3>Nameplate photo</h3><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></div>
+<div class="result-grid"><div><h3>Nameplate photo</h3><button class="image-open" type="button" data-image-viewer-src="{esc(upload_url)}"><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></button><p class="muted">Click the nameplate photo to zoom and drag.</p></div>
 <form method="post" action="/match" enctype="multipart/form-data"><h3>Read information</h3>
 <input type="hidden" name="upload_url" value="{esc(upload_url)}">
 <input type="hidden" name="customer_name" value="{esc(customer.get('customer_name') or '')}">
@@ -66,7 +66,7 @@ AI may read a character incorrectly from the nameplate. Confirm the model in thi
 <input type="hidden" name="customer_phone" value="{esc(customer.get('customer_phone') or '')}">
 <div class="grid">
 <div><label>Brand</label><input name="brand" value="{esc(brand or product.get('brand') or '')}"></div>
-<div><label>Model</label><input name="equipment_model" value="{esc(model or product.get('equipment_model') or '')}">{_model_check_notice()}</div>
+<div><label>Model</label><input class="model-confirm-input" name="equipment_model" value="{esc(model or product.get('equipment_model') or '')}">{_model_check_notice()}</div>
 <div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div>
 <div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or product.get('manufacturer') or '')}"></div>
 <div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div>
@@ -80,7 +80,11 @@ AI may read a character incorrectly from the nameplate. Confirm the model in thi
 </div>
 <input type="hidden" name="raw_text" value="{esc(raw_text)}">
 <p><button type="submit">Confirm and match gasket records</button> <a class="button" href="/">Upload another</a></p>
-</form></div></section>""")
+</form></div></section>
+<div class="image-viewer" id="image-viewer" aria-hidden="true">
+<div class="image-viewer-tools"><button type="button" data-zoom="out">-</button><button type="button" data-zoom="in">+</button><button type="button" data-close-viewer>Close</button></div>
+<div class="image-viewer-stage"><img id="image-viewer-img" alt="Nameplate enlarged"></div>
+</div>""")
 
     def patched_render_home(message=""):
         warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
@@ -99,8 +103,17 @@ main{max-width:none;padding:0}
 .work-zone{display:flex;justify-content:center;align-items:flex-start}
 .work-panel{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
 .home-form{width:min(760px,100%);background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:28px;margin:0}
-.model-check-notice{margin-top:8px;border:1px solid #efc36b;background:#fff8e7;color:#3a2a08;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}
-.model-check-notice strong{display:block;margin-bottom:4px;color:#201600}
+.model-confirm-input{border:2px solid #d93025!important;background:#fffafa!important;box-shadow:0 0 0 3px rgba(217,48,37,.12)}
+.model-check-notice{margin-top:8px;border:2px solid #d93025;background:#fff1f0;color:#5f1410;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}
+.model-check-notice strong{display:block;margin-bottom:4px;color:#3b0906}
+.image-open{display:block;width:100%;padding:0;border:0;background:transparent;cursor:zoom-in}
+.image-viewer{position:fixed;inset:0;background:rgba(7,16,22,.88);display:none;z-index:9999}
+.image-viewer.is-open{display:block}
+.image-viewer-tools{position:absolute;top:18px;right:18px;display:flex;gap:8px;z-index:2}
+.image-viewer-tools button{min-width:44px;background:#fff;color:#0f1d24;border-radius:6px}
+.image-viewer-stage{height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:grab}
+.image-viewer-stage:active{cursor:grabbing}
+.image-viewer-stage img{max-width:none;max-height:none;transform-origin:center center;user-select:none;pointer-events:none}
 .upload-working{margin-top:14px;border:1px solid #c9e7ea;background:#eefbfc;color:#0f1d24;border-radius:8px;padding:12px;line-height:1.45}
 .upload-working span{color:#687385}
 .upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:26px}

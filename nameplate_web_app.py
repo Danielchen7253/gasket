@@ -517,6 +517,17 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 .metric{{border:1px solid #dbe2ea;border-radius:8px;padding:12px;background:#fbfdfe}} .metric span,.muted{{color:#687385}} .metric strong{{font-size:24px}}
 .photo{{width:100%;height:320px;object-fit:contain;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc}}
 .plate{{width:100%;height:190px;object-fit:contain;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc}}
+.model-confirm-input{{border:2px solid #d93025!important;background:#fffafa!important;box-shadow:0 0 0 3px rgba(217,48,37,.12)}}
+.model-check-notice{{margin-top:8px;border:2px solid #d93025;background:#fff1f0;color:#5f1410;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}}
+.model-check-notice strong{{display:block;margin-bottom:4px;color:#3b0906}}
+.image-open{{display:block;width:100%;padding:0;border:0;background:transparent;cursor:zoom-in}}
+.image-viewer{{position:fixed;inset:0;background:rgba(7,16,22,.88);display:none;z-index:9999}}
+.image-viewer.is-open{{display:block}}
+.image-viewer-tools{{position:absolute;top:18px;right:18px;display:flex;gap:8px;z-index:2}}
+.image-viewer-tools button{{min-width:44px;background:#fff;color:#0f1d24;border-radius:6px}}
+.image-viewer-stage{{height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:grab}}
+.image-viewer-stage:active{{cursor:grabbing}}
+.image-viewer-stage img{{max-width:none;max-height:none;transform-origin:center center;user-select:none;pointer-events:none}}
 .facts{{display:grid;grid-template-columns:140px 1fr;gap:8px 12px}} .facts div:nth-child(odd){{color:#687385}}
 .item{{display:grid;grid-template-columns:34px 98px 1fr 150px 120px;gap:12px;align-items:center;border:1px solid #dbe2ea;border-radius:8px;padding:12px}}
 .item img{{width:98px;height:78px;object-fit:contain;border:1px solid #dbe2ea;border-radius:6px}} .price strong{{font-size:24px;display:block}}
@@ -525,7 +536,7 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 @media(max-width:860px){{.hero,.result-grid,.grid,.summary,.item{{grid-template-columns:1fr}}}}
 @media(max-width:860px){{.upload-row{{grid-template-columns:1fr}}}}
 </style></head><body><header><strong>Refrigerator Door Gasket Match</strong></header><main>{body}</main>
-<script>function updateTotal(){{let t=0,c=0;document.querySelectorAll('[data-price]').forEach(b=>{{if(b.checked){{t+=Number(b.dataset.price||0);c++}}}});let a=document.getElementById('selected-total'),n=document.getElementById('selected-count');if(a)a.textContent='$'+t.toFixed(2);if(n)n.textContent=c}}function fmt(s){{let m=Math.floor(s/60),r=s%60;return String(m).padStart(2,'0')+':'+String(r).padStart(2,'0')}}function startLoadingTimers(){{let start=Date.now();setInterval(()=>{{let s=Math.floor((Date.now()-start)/1000);document.querySelectorAll('[data-loading-label]').forEach(el=>{{el.textContent=el.getAttribute('data-loading-label')+' '+fmt(s)}})}},1000)}}function startUploadFeedback(){{let f=document.getElementById('upload');if(!f)return;f.addEventListener('submit',()=>{{let b=f.querySelector('button[type=\"submit\"]');if(b){{b.disabled=true;b.textContent='Reading nameplate...'}}let n=document.createElement('div');n.className='upload-working';n.innerHTML='<strong>Reading nameplate</strong><br><span>AI is extracting the refrigerator model. This usually takes a few seconds.</span>';f.appendChild(n)}})}}document.addEventListener('change',updateTotal);window.addEventListener('load',updateTotal);window.addEventListener('load',startLoadingTimers);window.addEventListener('load',startUploadFeedback);function pollProductStatus(){{let el=document.querySelector('[data-refresh-product]');if(!el)return;let id=el.getAttribute('data-refresh-product');let wantsImage=el.getAttribute('data-needs-image')==='1';let wantsGasket=el.getAttribute('data-needs-gasket')==='1';if(!wantsImage&&!wantsGasket)return;setInterval(async()=>{{try{{let r=await fetch('/product-status?product_id='+encodeURIComponent(id),{{cache:'no-store'}});let d=await r.json();if((wantsImage&&d.product_image_url)||(wantsGasket&&d.quote_item_count>0))window.location.reload();}}catch(e){{}}}},2000)}}window.addEventListener('load',pollProductStatus)</script>
+<script>function updateTotal(){{let t=0,c=0;document.querySelectorAll('[data-price]').forEach(b=>{{if(b.checked){{t+=Number(b.dataset.price||0);c++}}}});let a=document.getElementById('selected-total'),n=document.getElementById('selected-count');if(a)a.textContent='$'+t.toFixed(2);if(n)n.textContent=c}}function fmt(s){{let m=Math.floor(s/60),r=s%60;return String(m).padStart(2,'0')+':'+String(r).padStart(2,'0')}}function startLoadingTimers(){{let start=Date.now();setInterval(()=>{{let s=Math.floor((Date.now()-start)/1000);document.querySelectorAll('[data-loading-label]').forEach(el=>{{el.textContent=el.getAttribute('data-loading-label')+' '+fmt(s)}})}},1000)}}function startUploadFeedback(){{let f=document.getElementById('upload');if(!f)return;f.addEventListener('submit',()=>{{let b=f.querySelector('button[type=\"submit\"]');if(b){{b.disabled=true;b.textContent='Reading nameplate...'}}let n=document.createElement('div');n.className='upload-working';n.innerHTML='<strong>Reading nameplate</strong><br><span>AI is extracting the refrigerator model. This usually takes a few seconds.</span>';f.appendChild(n)}})}}function initImageViewer(){{let viewer=document.getElementById('image-viewer'),img=document.getElementById('image-viewer-img');if(!viewer||!img)return;let scale=1,x=0,y=0,drag=false,sx=0,sy=0;function apply(){{img.style.transform='translate('+x+'px,'+y+'px) scale('+scale+')'}}document.querySelectorAll('[data-image-viewer-src]').forEach(btn=>btn.addEventListener('click',()=>{{img.src=btn.getAttribute('data-image-viewer-src');scale=1;x=0;y=0;apply();viewer.classList.add('is-open');viewer.setAttribute('aria-hidden','false')}}));viewer.querySelector('[data-close-viewer]')?.addEventListener('click',()=>{{viewer.classList.remove('is-open');viewer.setAttribute('aria-hidden','true')}});viewer.querySelector('[data-zoom=\"in\"]')?.addEventListener('click',()=>{{scale=Math.min(5,scale+.25);apply()}});viewer.querySelector('[data-zoom=\"out\"]')?.addEventListener('click',()=>{{scale=Math.max(.5,scale-.25);apply()}});viewer.querySelector('.image-viewer-stage')?.addEventListener('pointerdown',e=>{{drag=true;sx=e.clientX-x;sy=e.clientY-y}});window.addEventListener('pointermove',e=>{{if(!drag)return;x=e.clientX-sx;y=e.clientY-sy;apply()}});window.addEventListener('pointerup',()=>drag=false);window.addEventListener('keydown',e=>{{if(e.key==='Escape')viewer.classList.remove('is-open')}})}}document.addEventListener('change',updateTotal);window.addEventListener('load',updateTotal);window.addEventListener('load',startLoadingTimers);window.addEventListener('load',startUploadFeedback);window.addEventListener('load',initImageViewer);function pollProductStatus(){{let el=document.querySelector('[data-refresh-product]');if(!el)return;let id=el.getAttribute('data-refresh-product');let wantsImage=el.getAttribute('data-needs-image')==='1';let wantsGasket=el.getAttribute('data-needs-gasket')==='1';if(!wantsImage&&!wantsGasket)return;setInterval(async()=>{{try{{let r=await fetch('/product-status?product_id='+encodeURIComponent(id),{{cache:'no-store'}});let d=await r.json();if((wantsImage&&d.product_image_url)||(wantsGasket&&d.quote_item_count>0))window.location.reload();}}catch(e){{}}}},2000)}}window.addEventListener('load',pollProductStatus)</script>
 </body></html>""".encode("utf-8")
 
 
@@ -547,22 +558,26 @@ def render_confirm_nameplate(upload_url: str, customer: dict, nameplate_data: di
     raw_text = nameplate_data.get("raw_text") or ""
     model_notice = """
 <div class="model-check-notice">
-<strong>Please check the model number carefully before continuing.</strong>
-AI may read a character incorrectly from the nameplate. Confirm the model in this box exactly matches the model printed on the label.
+<strong>Important: confirm the model number exactly.</strong>
+AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match the nameplate before you continue.
 </div>"""
     return page("Confirm Nameplate", f"""
 <section><h2>Confirm nameplate information</h2>
 <p>Check the uploaded nameplate against the information below. If anything is wrong, edit it before matching the database.</p>
-<div class="result-grid"><div><h3>Nameplate photo</h3><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></div>
+<div class="result-grid"><div><h3>Nameplate photo</h3><button class="image-open" type="button" data-image-viewer-src="{esc(upload_url)}"><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></button><p class="muted">Click the nameplate photo to zoom and drag.</p></div>
 <form method="post" action="/match" enctype="multipart/form-data"><h3>Read information</h3>
 <input type="hidden" name="upload_url" value="{esc(upload_url)}">
 <input type="hidden" name="customer_name" value="{esc(customer.get('customer_name') or '')}">
 <input type="hidden" name="customer_email" value="{esc(customer.get('customer_email') or '')}">
 <input type="hidden" name="customer_phone" value="{esc(customer.get('customer_phone') or '')}">
-<div class="grid"><div><label>Brand</label><input name="brand" value="{esc(brand or '')}"></div><div><label>Model</label><input name="equipment_model" value="{esc(model or '')}">{model_notice}</div><div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div><div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or '')}"></div><div><label>Manufacture date</label><input name="manufacture_date" value="{esc(nameplate_data.get('manufacture_date') or '')}"></div><div><label>Refrigerant</label><input name="refrigerant" value="{esc(nameplate_data.get('refrigerant') or '')}"></div><div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div></div>
+<div class="grid"><div><label>Brand</label><input name="brand" value="{esc(brand or '')}"></div><div><label>Model</label><input class="model-confirm-input" name="equipment_model" value="{esc(model or '')}">{model_notice}</div><div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div><div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or '')}"></div><div><label>Manufacture date</label><input name="manufacture_date" value="{esc(nameplate_data.get('manufacture_date') or '')}"></div><div><label>Refrigerant</label><input name="refrigerant" value="{esc(nameplate_data.get('refrigerant') or '')}"></div><div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div></div>
 <label>Raw text</label><textarea name="raw_text" style="width:100%;min-height:110px;border:1px solid #dbe2ea;border-radius:6px;padding:10px">{esc(raw_text)}</textarea>
 <p><button type="submit">Confirm and match gasket records</button> <a class="button" href="/">Upload another</a></p>
-</form></div></section>""")
+</form></div></section>
+<div class="image-viewer" id="image-viewer" aria-hidden="true">
+<div class="image-viewer-tools"><button type="button" data-zoom="out">-</button><button type="button" data-zoom="in">+</button><button type="button" data-close-viewer>Close</button></div>
+<div class="image-viewer-stage"><img id="image-viewer-img" alt="Nameplate enlarged"></div>
+</div>""")
 
 
 def render_no_match(brand: str, model: str, upload_url: str | None, nameplate_data: dict) -> bytes:
