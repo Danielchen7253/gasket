@@ -35,6 +35,13 @@ def _patched_install(g):
         except Exception:
             return {}
 
+    def _model_check_notice():
+        return """
+<div class="model-check-notice">
+<strong>Please check the model number carefully before continuing.</strong>
+AI may read a character incorrectly from the nameplate. Confirm the model in this box exactly matches the model printed on the label.
+</div>"""
+
     def _door_positions_text(product):
         positions = product.get("door_positions")
         if isinstance(positions, list) and positions:
@@ -59,7 +66,7 @@ def _patched_install(g):
 <input type="hidden" name="customer_phone" value="{esc(customer.get('customer_phone') or '')}">
 <div class="grid">
 <div><label>Brand</label><input name="brand" value="{esc(brand or product.get('brand') or '')}"></div>
-<div><label>Model</label><input name="equipment_model" value="{esc(model or product.get('equipment_model') or '')}"></div>
+<div><label>Model</label><input name="equipment_model" value="{esc(model or product.get('equipment_model') or '')}">{_model_check_notice()}</div>
 <div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div>
 <div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or product.get('manufacturer') or '')}"></div>
 <div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div>
@@ -72,7 +79,7 @@ def _patched_install(g):
 <div><label>Active / discontinued status</label><input name="lifecycle_status" value="{esc(product.get('lifecycle_status') or '')}"></div>
 </div>
 <input type="hidden" name="raw_text" value="{esc(raw_text)}">
-<p><button id="confirm-match" type="submit" disabled>Please wait 10s</button> <a class="button" href="/">Upload another</a></p>
+<p><button type="submit">Confirm and match gasket records</button> <a class="button" href="/">Upload another</a></p>
 </form></div></section>""")
 
     def patched_render_home(message=""):
@@ -92,6 +99,8 @@ main{max-width:none;padding:0}
 .work-zone{display:flex;justify-content:center;align-items:flex-start}
 .work-panel{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
 .home-form{width:min(760px,100%);background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:28px;margin:0}
+.model-check-notice{margin-top:8px;border:1px solid #efc36b;background:#fff8e7;color:#3a2a08;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}
+.model-check-notice strong{display:block;margin-bottom:4px;color:#201600}
 .upload-working{margin-top:14px;border:1px solid #c9e7ea;background:#eefbfc;color:#0f1d24;border-radius:8px;padding:12px;line-height:1.45}
 .upload-working span{color:#687385}
 .upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:26px}
