@@ -367,6 +367,56 @@ def get_quote_items(client: httpx.Client, product_id: int) -> list[dict]:
     return [row for row in response.json() if is_customer_visible_gasket(row)]
 
 
+def get_evidence_package(client: httpx.Client, product_id: int) -> dict | None:
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/product_evidence_packages",
+        params={
+            "select": "*",
+            "refrigerator_product_id": f"eq.{product_id}",
+            "limit": "1",
+        },
+        headers=supabase_headers(),
+    )
+    if response.status_code in {404, 406}:
+        return None
+    response.raise_for_status()
+    rows = response.json()
+    return rows[0] if rows else None
+
+
+def get_evidence_items(client: httpx.Client, product_id: int) -> list[dict]:
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/product_evidence_items",
+        params={
+            "select": "*",
+            "refrigerator_product_id": f"eq.{product_id}",
+            "order": "confidence_score.desc.nullslast,created_at.desc",
+            "limit": "50",
+        },
+        headers=supabase_headers(),
+    )
+    if response.status_code in {404, 406}:
+        return []
+    response.raise_for_status()
+    return response.json()
+
+
+def get_recent_evidence_packages(client: httpx.Client, limit: int = 30) -> list[dict]:
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/product_evidence_packages",
+        params={
+            "select": "*,refrigerator_products(id,brand,equipment_model,product_type,product_image_url,updated_at,last_enriched_at,last_discovered_at,data_status,data_confidence,door_count,door_layout,door_positions,manufacturer,lifecycle_status)",
+            "order": "updated_at.desc",
+            "limit": str(limit),
+        },
+        headers=supabase_headers(),
+    )
+    if response.status_code in {404, 406}:
+        return []
+    response.raise_for_status()
+    return response.json()
+
+
 def save_inferred_door_layout(client: httpx.Client, product: dict, positions: list[dict]) -> None:
     if product.get("door_positions") or not positions:
         return
@@ -596,13 +646,6 @@ def render_no_match(brand: str, model: str, upload_url: str | None, nameplate_da
 
 def render_result(product: dict, quote_items: list[dict], request: dict | None, upload_url: str | None) -> bytes:
     nameplate_data = (request or {}).get("nameplate_data") or {}
-    try:
-        from product_evidence import build_evidence_package
-
-        evidence_package = build_evidence_package(product, quote_items, nameplate_data, "display_result")
-    except Exception as exc:
-        print(f"evidence package build failed for product {product.get('id')}: {exc}")
-        evidence_package = {}
     pending_new_product = is_unconfirmed_new_product(product)
     positions = [] if pending_new_product else infer_door_positions(product)
     quantity = 0 if pending_new_product else (len(positions) or estimated_gasket_quantity(product, quote_items))
@@ -681,11 +724,9 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
 
     summary_html = "" if pending_new_product else f"""<div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
     rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
-    evidence_html = render_evidence_package(evidence_package)
     return page("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-{evidence_html}
 <section><h2>Gasket quote</h2>{summary_html}<div>{rows_html}</div></section>""")
 
 
@@ -708,6 +749,103 @@ def render_evidence_package(package: dict) -> str:
 <div class="grid">{rows_html}</div></section>"""
 
 
+def compact_json(value) -> str:
+    if value in (None, ""):
+        return ""
+    try:
+        return json.dumps(value, ensure_ascii=False, indent=2)
+    except TypeError:
+        return str(value)
+
+
+def render_admin_dashboard(packages: list[dict]) -> bytes:
+    rows = []
+    for package in packages:
+        product = package.get("refrigerator_products") or {}
+        product_id = package.get("refrigerator_product_id") or product.get("id")
+        missing = package.get("missing_fields") or []
+        missing_text = ", ".join([item.get("label") or item.get("field_name") or "" for item in missing[:4]]) or "None"
+        image_state = "yes" if product.get("product_image_url") else "missing"
+        rows.append(
+            f"""<tr>
+<td><a href="/ADMIN?product_id={esc(product_id)}">{esc(product_id)}</a></td>
+<td><strong>{esc(package.get('brand') or product.get('brand'))}</strong><br>{esc(package.get('equipment_model') or product.get('equipment_model'))}</td>
+<td>{esc(product.get('product_type') or '')}<br><span class="muted">{esc(product.get('door_layout') or '')}</span></td>
+<td>{esc(package.get('status'))}</td>
+<td>{esc(package.get('completeness_score'))}%</td>
+<td>{esc(package.get('overall_confidence'))}%</td>
+<td>{esc(image_state)}</td>
+<td>{esc(missing_text)}</td>
+<td><span class="muted">Product</span><br>{esc(product.get('updated_at') or '')}<br><span class="muted">Enriched</span><br>{esc(product.get('last_enriched_at') or '')}<br><span class="muted">Package</span><br>{esc(package.get('updated_at') or '')}</td>
+</tr>"""
+        )
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>No evidence packages yet.</td></tr>"
+    return page("ADMIN", f"""
+<style>
+.admin-table{{width:100%;border-collapse:collapse;background:white}}
+.admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
+.admin-table th{{background:#f8fafc;color:#687385}}
+.admin-actions{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}}
+</style>
+<section><h2>ADMIN Product Evidence</h2>
+<p class="muted">Internal view for product evidence packages, field completeness, confidence, and enrichment timestamps.</p>
+<div class="admin-actions"><a class="button" href="/">Upload page</a><a class="button" href="/ADMIN">Refresh ADMIN</a></div>
+<table class="admin-table"><thead><tr><th>ID</th><th>Product</th><th>Profile</th><th>Status</th><th>Complete</th><th>Confidence</th><th>Image</th><th>Missing</th><th>Times</th></tr></thead><tbody>{rows_html}</tbody></table>
+</section>""")
+
+
+def render_admin_product(product: dict, package: dict | None, items: list[dict], quote_items: list[dict]) -> bytes:
+    fields = [
+        ("Brand", product.get("brand")),
+        ("Model", product.get("equipment_model")),
+        ("Manufacturer", product.get("manufacturer")),
+        ("Product type", product.get("product_type")),
+        ("Door count", product.get("door_count")),
+        ("Door layout", product.get("door_layout")),
+        ("Lifecycle", product.get("lifecycle_status")),
+        ("Data status", product.get("data_status")),
+        ("Data confidence", product.get("data_confidence")),
+        ("Created", product.get("created_at")),
+        ("Updated", product.get("updated_at")),
+        ("Last discovered", product.get("last_discovered_at")),
+        ("Last enriched", product.get("last_enriched_at")),
+        ("Door layout updated", product.get("door_layout_updated_at")),
+        ("Image confidence", product.get("product_image_confidence")),
+        ("Image source", product.get("product_image_source_url")),
+        ("Official URL", product.get("official_product_url")),
+        ("Manual URL", product.get("manual_url")),
+        ("Spec sheet URL", product.get("spec_sheet_url")),
+    ]
+    field_rows = "".join([f"<div>{esc(label)}</div><div><strong>{esc(value)}</strong></div>" for label, value in fields])
+    image = product.get("product_image_url")
+    image_html = f"<img class='photo' src='{esc(image)}' alt='Product image'>" if image else "<div class='photo loading'>Product image missing</div>"
+    package_html = render_evidence_package(package or {}) if package else "<section><h2>Product evidence package</h2><p class='muted'>No evidence package yet.</p></section>"
+    item_rows = []
+    for item in items:
+        item_rows.append(
+            f"""<tr><td>{esc(item.get('field_name'))}</td><td>{esc(item.get('evidence_type'))}</td><td>{esc(item.get('source_name'))}<br><span class="muted">{esc(item.get('source_url'))}</span></td><td>{esc(item.get('supports_value'))}</td><td>{esc(item.get('confidence_score'))}%</td><td><pre>{esc(compact_json(item.get('evidence_json')))}</pre></td></tr>"""
+        )
+    quote_rows = []
+    for quote in quote_items:
+        quote_rows.append(
+            f"""<tr><td>{esc(quote.get('door_position_display') or quote.get('door_position'))}</td><td>{esc(quote.get('part_number') or quote.get('universal_part_number'))}</td><td>{esc(quote.get('dimensions_text'))}</td><td>{esc(quote.get('confidence_score'))}%</td><td>{money(quote.get('final_price_usd'))}</td><td>{esc(quote.get('source_name'))}</td></tr>"""
+        )
+    item_rows_html = "".join(item_rows) if item_rows else "<tr><td colspan='6'>No evidence items yet.</td></tr>"
+    quote_rows_html = "".join(quote_rows) if quote_rows else "<tr><td colspan='6'>No gasket quote rows yet.</td></tr>"
+    return page("ADMIN Product", f"""
+<style>
+pre{{white-space:pre-wrap;max-height:180px;overflow:auto;background:#f8fafc;border:1px solid #dbe2ea;border-radius:6px;padding:8px}}
+.admin-table{{width:100%;border-collapse:collapse;background:white}}
+.admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
+.admin-table th{{background:#f8fafc;color:#687385}}
+</style>
+<section><p><a class="button" href="/ADMIN">Back to ADMIN</a> <a class="button" href="/preview?product_id={esc(product.get('id'))}">Customer preview</a></p>
+<h2>{esc(product.get('brand'))} {esc(product.get('equipment_model'))}</h2><div class="result-grid"><div>{image_html}</div><div class="facts">{field_rows}</div></div></section>
+{package_html}
+<section><h2>Evidence items</h2><table class="admin-table"><thead><tr><th>Field</th><th>Type</th><th>Source</th><th>Supports</th><th>Confidence</th><th>JSON</th></tr></thead><tbody>{item_rows_html}</tbody></table></section>
+<section><h2>Gasket rows</h2><table class="admin-table"><thead><tr><th>Door</th><th>Part</th><th>Size</th><th>Confidence</th><th>Price</th><th>Source</th></tr></thead><tbody>{quote_rows_html}</tbody></table></section>""")
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         self.send_response(HTTPStatus.OK)
@@ -725,6 +863,26 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/":
             self.send_html(render_home())
+            return
+        if parsed.path.lower() == "/admin":
+            query = parse_qs(parsed.query)
+            product_id = int(query.get("product_id", ["0"])[0] or "0")
+            with httpx.Client(timeout=30) as client:
+                if product_id:
+                    product = get_product(client, product_id)
+                    if not product:
+                        self.send_html(page("ADMIN Product Not Found", "<section><h2>Product not found</h2><p><a class='button' href='/ADMIN'>Back to ADMIN</a></p></section>"), HTTPStatus.NOT_FOUND)
+                        return
+                    self.send_html(
+                        render_admin_product(
+                            product,
+                            get_evidence_package(client, product_id),
+                            get_evidence_items(client, product_id),
+                            get_quote_items(client, product_id),
+                        )
+                    )
+                    return
+                self.send_html(render_admin_dashboard(get_recent_evidence_packages(client)))
             return
         if parsed.path in {"/read-nameplate", "/match"}:
             self.send_html(render_home("Upload a nameplate photo to start a new match."))
