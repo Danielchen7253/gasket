@@ -126,6 +126,24 @@ def _install_patch(g):
 {plate}<div class="facts"><div>Brand read</div><div><strong>{esc(brand or 'Not found')}</strong></div><div>Model read</div><div><strong>{esc(model or 'Not found')}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Raw text</div><div>{esc(nameplate_data.get('raw_text') or '')}</div></div>
 <p><a class="button" href="/">Try another nameplate</a></p></section>""")
 
+    def evidence_html(package):
+        if not package:
+            return ""
+        missing = package.get("missing_fields") or []
+        items = package.get("items") or []
+        missing_text = ", ".join([item.get("label") or item.get("field_name") or "" for item in missing[:6]]) or "None"
+        rows = []
+        for item in sorted(items, key=lambda row: float(row.get("confidence_score") or 0), reverse=True)[:6]:
+            rows.append(
+                f"""<div class="metric"><span>{esc(item.get('source_name') or item.get('evidence_type') or 'Evidence')}</span><strong>{esc(item.get('confidence_score') or 0)}%</strong><p>{esc(item.get('supports_value') or item.get('field_name') or '')}</p></div>"""
+            )
+        rows_html = "".join(rows) if rows else "<p class='muted'>Evidence is being collected.</p>"
+        return f"""
+<section><h2>Product evidence package</h2>
+<div class="summary"><div class="metric"><span>Status</span><strong>{esc(package.get('status') or 'collecting')}</strong></div><div class="metric"><span>Completeness</span><strong>{esc(package.get('completeness_score') or 0)}%</strong></div><div class="metric"><span>Confidence</span><strong>{esc(package.get('overall_confidence') or 0)}%</strong></div></div>
+<p class="muted">Missing or still being enriched: {esc(missing_text)}</p>
+<div class="grid">{rows_html}</div></section>"""
+
     def patched_render_home(message=""):
         warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
         upload_style = """
@@ -154,10 +172,10 @@ main{max-width:none;padding:0}
             from product_evidence import build_evidence_package
 
             evidence_package = build_evidence_package(product, quote_items, nameplate_data, "display_result")
-            evidence_html = g["render_evidence_package"](evidence_package) if "render_evidence_package" in g else ""
+            product_evidence_html = evidence_html(evidence_package)
         except Exception as exc:
             print(f"evidence package build failed for product {product.get('id')}: {exc}", flush=True)
-            evidence_html = ""
+            product_evidence_html = ""
         pending_new = g["is_unconfirmed_new_product"](product)
         g["trigger_background_refresh"](product["id"], not product.get("product_image_url"), not quote_items)
         product_img = product.get("product_image_url")
@@ -194,7 +212,7 @@ main{max-width:none;padding:0}
         return g["page"]("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-{evidence_html}
+{product_evidence_html}
 <section><h2>Gasket quote</h2>{summary_html}<div>{rows_html}</div></section>""")
 
     old_do_GET = g["Handler"].do_GET
