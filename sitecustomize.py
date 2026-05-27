@@ -132,7 +132,7 @@ def _install_patch(g):
 <style>
 main{max-width:none;padding:0}
 .work-zone{max-width:1180px;margin:0 auto;display:flex;justify-content:center;align-items:flex-start}
-.work-shell{background:#eef3f6;min-height:calc(100vh - 210px);padding:56px 22px 80px}
+.work-shell{background:#eef3f6;padding:34px 22px 38px}
 .home-form{background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
 .upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}
 .upload-row button{width:auto;white-space:nowrap}

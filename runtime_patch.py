@@ -92,7 +92,7 @@ AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match th
 <style>
 main{max-width:none;padding:0}
 .work-zone{max-width:1180px;margin:0 auto}
-.work-shell{background:#eef3f6;min-height:100vh;padding:56px 22px 80px}
+.work-shell{background:#eef3f6;padding:34px 22px 38px}
 .work-zone{display:flex;justify-content:center;align-items:flex-start}
 .work-panel{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
 .home-form{width:min(760px,100%);background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:28px;margin:0}
