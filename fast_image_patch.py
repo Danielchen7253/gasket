@@ -14,6 +14,7 @@ from product_image_search_crawler import (
     promote_best_image,
     score_candidate,
     search_google_cse,
+    search_public_web_images,
     supabase_headers,
 )
 
@@ -102,6 +103,8 @@ def quick_promote_product_image(client, product: dict, limit: int = 6) -> bool:
     raw_candidates = search_google_cse(client, product)[:limit]
     if not raw_candidates:
         raw_candidates = search_bing_images_strict(client, product, limit=limit)
+    if not raw_candidates:
+        raw_candidates = search_public_web_images(client, product)[:limit]
     if not raw_candidates:
         return False
 
