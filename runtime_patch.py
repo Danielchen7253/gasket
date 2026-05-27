@@ -92,14 +92,8 @@ AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match th
 <style>
 body>header{display:none}
 main{max-width:none;padding:0}
-.site-header{background:#0f1d24;color:#fff;border:0;border-radius:0;margin:0;padding:0}
-.site-header .wrap,.work-zone{max-width:1180px;margin:0 auto}
-.site-header .wrap{display:flex;align-items:center;padding:18px 22px}
-.brand-lockup{display:flex;align-items:center;gap:12px}
-.brand-mark{width:38px;height:38px;border-radius:8px;background:#0a6f78;display:flex;align-items:center;justify-content:center;font-weight:900;letter-spacing:.02em}
-.brand-name{font-size:20px;font-weight:800;line-height:1}
-.brand-tag{display:block;margin-top:4px;color:#b8c8d2;font-size:12px;font-weight:500}
-.work-shell{background:#eef3f6;min-height:calc(100vh - 74px);padding:56px 22px 80px}
+.work-zone{max-width:1180px;margin:0 auto}
+.work-shell{background:#eef3f6;min-height:100vh;padding:56px 22px 80px}
 .work-zone{display:flex;justify-content:center;align-items:flex-start}
 .work-panel{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
 .home-form{width:min(760px,100%);background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:28px;margin:0}
@@ -119,13 +113,10 @@ main{max-width:none;padding:0}
 .upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:26px}
 .upload-row button{width:auto;white-space:nowrap}
 .home-form .grid{grid-template-columns:1fr 1fr;margin-top:8px}
-@media(max-width:900px){.site-header .wrap,.work-zone{grid-template-columns:1fr}.home-form .grid{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr}.upload-row button{width:100%;justify-content:center;text-align:center}}
+@media(max-width:900px){.work-zone{grid-template-columns:1fr}.home-form .grid{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr}.upload-row button{width:100%;justify-content:center;text-align:center}}
 </style>"""
         return g["page"]("Gasket Match", f"""
 {upload_style}
-<section class="site-header"><div class="wrap">
-<div class="brand-lockup"><div class="brand-mark">GM</div><div><div class="brand-name">Gasket Match</div><span class="brand-tag">Refrigerator door gasket identification</span></div></div>
-</div></section>
 <div class="work-shell"><section class="work-zone">
 <form id="upload" class="home-form" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
 <div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div></div>
