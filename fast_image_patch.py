@@ -100,11 +100,14 @@ def quick_promote_product_image(client, product: dict, limit: int = 6) -> bool:
     if promote_best_image(client, product, saved):
         return True
 
-    raw_candidates = search_google_cse(client, product)[:limit]
+    def strong(rows):
+        return [row for row in rows if score_candidate(product, row) >= MIN_PROMOTE_SCORE]
+
+    raw_candidates = strong(search_google_cse(client, product))[:limit]
     if not raw_candidates:
-        raw_candidates = search_bing_images_strict(client, product, limit=limit)
+        raw_candidates = strong(search_bing_images_strict(client, product, limit=limit))[:limit]
     if not raw_candidates:
-        raw_candidates = search_public_web_images(client, product)[:limit]
+        raw_candidates = strong(search_public_web_images(client, product))[:limit]
     if not raw_candidates:
         return False
 

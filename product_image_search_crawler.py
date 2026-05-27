@@ -377,7 +377,7 @@ def extract_page_images(client: httpx.Client, page: dict) -> list[dict]:
 def search_public_web_images(client: httpx.Client, product: dict) -> list[dict]:
     rows = []
     rows.extend(search_bing_images(client, product))
-    if rows:
+    if any(score_candidate(product, row) >= MIN_PROMOTE_SCORE for row in rows):
         return rows[:10]
     for page in search_duckduckgo_pages(client, product)[:5]:
         rows.extend(extract_page_images(client, page))
