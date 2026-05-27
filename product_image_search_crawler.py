@@ -10,6 +10,8 @@ from bs4 import BeautifulSoup
 import httpx
 from dotenv import load_dotenv
 
+from trusted_sources import trusted_site_query
+
 
 load_dotenv(Path(__file__).with_name(".env"))
 
@@ -286,7 +288,7 @@ def unwrap_duckduckgo_url(url: str) -> str:
 
 
 def search_duckduckgo_pages(client: httpx.Client, product: dict) -> list[dict]:
-    query = f'{product["brand"]} {product["equipment_model"]} refrigerator product'
+    query = f'{product["brand"]} {product["equipment_model"]} refrigerator product ({trusted_site_query(45)})'
     try:
         response = client.get(
             "https://duckduckgo.com/html/",
@@ -311,6 +313,38 @@ def search_duckduckgo_pages(client: httpx.Client, product: dict) -> list[dict]:
             {
                 "page_url": page_url,
                 "source_name": "DuckDuckGo Result Page",
+                "title": link.get_text(" ", strip=True),
+            }
+        )
+    return rows
+
+
+def search_duckduckgo_pages_wide(client: httpx.Client, product: dict) -> list[dict]:
+    query = f'{product["brand"]} {product["equipment_model"]} refrigerator product'
+    try:
+        response = client.get(
+            "https://duckduckgo.com/html/",
+            params={"q": query},
+            headers={"User-Agent": USER_AGENT},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        print(f"DuckDuckGo wide page search skipped for {product['brand']} {product['equipment_model']}: {exc.__class__.__name__}")
+        return []
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    rows = []
+    seen = set()
+    for link in soup.select("a.result__a")[:8]:
+        page_url = unwrap_duckduckgo_url(link.get("href") or "")
+        if not page_url or page_url in seen:
+            continue
+        seen.add(page_url)
+        rows.append(
+            {
+                "page_url": page_url,
+                "source_name": "DuckDuckGo Wide Result Page",
                 "title": link.get_text(" ", strip=True),
             }
         )
@@ -379,7 +413,10 @@ def search_public_web_images(client: httpx.Client, product: dict) -> list[dict]:
     rows.extend(search_bing_images(client, product))
     if any(score_candidate(product, row) >= MIN_PROMOTE_SCORE for row in rows):
         return rows[:10]
-    for page in search_duckduckgo_pages(client, product)[:5]:
+    pages = search_duckduckgo_pages(client, product)[:5]
+    if not pages:
+        pages = search_duckduckgo_pages_wide(client, product)[:5]
+    for page in pages:
         rows.extend(extract_page_images(client, page))
         if len(rows) >= 10:
             break

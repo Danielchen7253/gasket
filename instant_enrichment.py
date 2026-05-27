@@ -20,6 +20,7 @@ load_dotenv(os.path.join(os.path.dirname(ROOT), ".env"))
 from ai_product_research import enrich_confirmed_product
 from fast_image_patch import quick_promote_product_image
 from product_image_search_crawler import supabase_headers
+from trusted_sources import trusted_source_prompt
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 TASK_TABLE = "product_enrichment_tasks"
@@ -256,6 +257,7 @@ def promote_image_from_openai(
         return None
     brand = compact(product.get("brand"))
     model = compact(product.get("equipment_model"))
+    preferred_sources = trusted_source_prompt()
     if not brand or not model:
         return None
 
@@ -265,6 +267,9 @@ Find one usable main product photo URL for this refrigerator.
 Brand: {brand}
 Model: {model}
 Nameplate JSON: {json.dumps(nameplate_data or {}, ensure_ascii=False)}
+
+Preferred source list. Search these first before wider web:
+{preferred_sources}
 
 Rules:
 - Return only a real refrigerator product photo, not a logo, icon, gasket, part photo, manual cover, diagram, or placeholder.

@@ -12,6 +12,8 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 
+from trusted_sources import trusted_source_prompt
+
 
 load_dotenv(Path(__file__).with_name(".env"))
 
@@ -172,6 +174,7 @@ def clean_door_key(value: str | None, index: int) -> str:
 
 def build_prompt(brand: str, model: str, nameplate_data: dict[str, Any] | None) -> str:
     nameplate = json.dumps(nameplate_data or {}, ensure_ascii=False)
+    preferred_sources = trusted_source_prompt()
     return f"""
 You are researching refrigerator door gaskets for a customer quote workflow.
 
@@ -180,7 +183,11 @@ Brand: {brand}
 Model: {model}
 Nameplate JSON: {nameplate}
 
-Use web search. Cross-check manufacturer pages, parts distributors, manuals, and appliance parts sites when available.
+Use web search. Search the preferred source list first, then expand to the wider web only if preferred sources do not provide enough useful data.
+Preferred source list:
+{preferred_sources}
+
+Cross-check manufacturer pages, parts distributors, manuals, and appliance parts sites when available.
 Return JSON only. Do not include markdown.
 
 Rules:
@@ -254,6 +261,7 @@ def build_gasket_followup_prompt(
 ) -> str:
     product_json = json.dumps(product or {}, ensure_ascii=False)
     nameplate = json.dumps(nameplate_data or {}, ensure_ascii=False)
+    preferred_sources = trusted_source_prompt()
     return f"""
 The previous product research did not return usable gasket rows.
 
@@ -263,7 +271,9 @@ Model: {model}
 Known product JSON: {product_json}
 Nameplate JSON: {nameplate}
 
-Use web search and return JSON only with the same schema:
+Use web search and return JSON only with the same schema. Search these preferred sources first:
+{preferred_sources}
+
 {{"product": <same or improved product object>, "gaskets": [ ... ]}}
 
 Focus only on refrigerator door gasket information:
