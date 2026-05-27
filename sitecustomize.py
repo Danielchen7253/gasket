@@ -150,6 +150,14 @@ main{max-width:none;padding:0}
 
     def patched_render_result(product, quote_items, request, upload_url):
         nameplate_data = (request or {}).get("nameplate_data") or {}
+        try:
+            from product_evidence import build_evidence_package
+
+            evidence_package = build_evidence_package(product, quote_items, nameplate_data, "display_result")
+            evidence_html = g["render_evidence_package"](evidence_package) if "render_evidence_package" in g else ""
+        except Exception as exc:
+            print(f"evidence package build failed for product {product.get('id')}: {exc}", flush=True)
+            evidence_html = ""
         pending_new = g["is_unconfirmed_new_product"](product)
         g["trigger_background_refresh"](product["id"], not product.get("product_image_url"), not quote_items)
         product_img = product.get("product_image_url")
@@ -186,6 +194,7 @@ main{max-width:none;padding:0}
         return g["page"]("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
+{evidence_html}
 <section><h2>Gasket quote</h2>{summary_html}<div>{rows_html}</div></section>""")
 
     old_do_GET = g["Handler"].do_GET

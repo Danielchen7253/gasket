@@ -687,6 +687,13 @@ def enrich_confirmed_product(
     updated = update_product(client, product_id, normalized)
     replace_flat_gaskets(client, product_id, normalized)
     try:
+        from product_evidence import build_evidence_package, persist_evidence_package
+
+        evidence_package = build_evidence_package(updated or product, normalized.get("gaskets") or [], nameplate_data or {}, "ai_research_completed")
+        persist_evidence_package(client, evidence_package)
+    except Exception as exc:
+        print(f"evidence package persistence skipped for {brand} {model}: {exc}", flush=True)
+    try:
         upsert_product_gasket_spec(client, product_id, normalized)
     except Exception as exc:
         print(f"compat product_gasket_specs upsert skipped for {brand} {model}: {exc}", flush=True)

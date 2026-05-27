@@ -596,6 +596,13 @@ def render_no_match(brand: str, model: str, upload_url: str | None, nameplate_da
 
 def render_result(product: dict, quote_items: list[dict], request: dict | None, upload_url: str | None) -> bytes:
     nameplate_data = (request or {}).get("nameplate_data") or {}
+    try:
+        from product_evidence import build_evidence_package
+
+        evidence_package = build_evidence_package(product, quote_items, nameplate_data, "display_result")
+    except Exception as exc:
+        print(f"evidence package build failed for product {product.get('id')}: {exc}")
+        evidence_package = {}
     pending_new_product = is_unconfirmed_new_product(product)
     positions = [] if pending_new_product else infer_door_positions(product)
     quantity = 0 if pending_new_product else (len(positions) or estimated_gasket_quantity(product, quote_items))
@@ -674,10 +681,31 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
 
     summary_html = "" if pending_new_product else f"""<div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
     rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
+    evidence_html = render_evidence_package(evidence_package)
     return page("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
+{evidence_html}
 <section><h2>Gasket quote</h2>{summary_html}<div>{rows_html}</div></section>""")
+
+
+def render_evidence_package(package: dict) -> str:
+    if not package:
+        return ""
+    missing = package.get("missing_fields") or []
+    items = package.get("items") or []
+    missing_text = ", ".join([item.get("label") or item.get("field_name") or "" for item in missing[:6]]) or "None"
+    rows = []
+    for item in sorted(items, key=lambda row: float(row.get("confidence_score") or 0), reverse=True)[:6]:
+        rows.append(
+            f"""<div class="metric"><span>{esc(item.get('source_name') or item.get('evidence_type') or 'Evidence')}</span><strong>{esc(item.get('confidence_score') or 0)}%</strong><p>{esc(item.get('supports_value') or item.get('field_name') or '')}</p></div>"""
+        )
+    rows_html = "".join(rows) if rows else "<p class='muted'>Evidence is being collected.</p>"
+    return f"""
+<section><h2>Product evidence package</h2>
+<div class="summary"><div class="metric"><span>Status</span><strong>{esc(package.get('status') or 'collecting')}</strong></div><div class="metric"><span>Completeness</span><strong>{esc(package.get('completeness_score') or 0)}%</strong></div><div class="metric"><span>Confidence</span><strong>{esc(package.get('overall_confidence') or 0)}%</strong></div></div>
+<p class="muted">Missing or still being enriched: {esc(missing_text)}</p>
+<div class="grid">{rows_html}</div></section>"""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -817,7 +845,15 @@ class Handler(BaseHTTPRequestHandler):
                 save_inferred_door_layout(client, product, positions)
                 product["door_positions"] = positions
                 product["door_count"] = len(positions)
-            self.send_html(render_result(product, get_quote_items(client, product["id"]), request, upload_url))
+            quote_items = get_quote_items(client, product["id"])
+            try:
+                from product_evidence import build_evidence_package, persist_evidence_package
+
+                evidence_package = build_evidence_package(product, quote_items, nameplate_data, "customer_confirmed")
+                persist_evidence_package(client, evidence_package)
+            except Exception as exc:
+                print(f"evidence package persistence skipped for {brand} {model}: {exc}", flush=True)
+            self.send_html(render_result(product, quote_items, request, upload_url))
 
 
 def main() -> None:
