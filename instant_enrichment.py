@@ -246,7 +246,11 @@ def extract_json_object(value: str) -> dict[str, Any]:
         return json.loads(match.group(0))
 
 
-def promote_image_from_openai(product: dict[str, Any], nameplate_data: dict[str, Any] | None = None) -> dict[str, Any] | None:
+def promote_image_from_openai(
+    client: httpx.Client,
+    product: dict[str, Any],
+    nameplate_data: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         return None
@@ -319,18 +323,47 @@ Rules:
             output_text = "\n".join(texts)
         result = extract_json_object(output_text or "{}")
         image_url = compact(result.get("image_url"))
+        source_url = compact(result.get("source_url"))
+        title = compact(result.get("title"))
+        if not image_url and source_url.startswith(("http://", "https://")):
+            try:
+                from product_image_search_crawler import extract_page_images, image_quality_score, score_candidate
+
+                page_images = extract_page_images(client, {"page_url": source_url, "title": title})
+                scored = []
+                for candidate in page_images:
+                    candidate["match_score"] = score_candidate(product, candidate)
+                    haystack = re.sub(
+                        r"[^A-Z0-9]",
+                        "",
+                        " ".join(
+                            compact(candidate.get(key))
+                            for key in ["image_url", "page_url", "title", "source_name"]
+                        ).upper(),
+                    )
+                    if any(token in haystack for token in ["LOGO", "ICON", "GASKET", "SEAL", "PART", "DIAGRAM", "MANUAL"]):
+                        continue
+                    if candidate["match_score"] >= 45:
+                        scored.append(candidate)
+                if scored:
+                    best = max(scored, key=image_quality_score)
+                    image_url = compact(best.get("image_url"))
+                    source_url = compact(best.get("page_url")) or source_url
+                    title = compact(best.get("title")) or title
+            except Exception as exc:
+                print(f"OpenAI image page extraction skipped for {brand} {model}: {exc}", flush=True)
         if not image_url.startswith(("http://", "https://")):
             return None
         haystack = re.sub(r"[^A-Z0-9]", "", " ".join([
             image_url,
-            compact(result.get("source_url")),
-            compact(result.get("title")),
+            source_url,
+            title,
         ]).upper())
         if any(token in haystack for token in ["LOGO", "ICON", "GASKET", "SEAL", "PART", "DIAGRAM", "MANUAL"]):
             return None
         return {
             "product_image_url": image_url,
-            "product_image_source_url": result.get("source_url"),
+            "product_image_source_url": source_url or result.get("source_url"),
             "product_image_confidence": max(60, min(100, float(result.get("confidence_score") or 70))),
             "data_source_summary": product.get("data_source_summary") or result.get("evidence_summary"),
             "updated_at": now_iso(),
@@ -366,7 +399,7 @@ def run_image_task(product_id: int, nameplate_data: dict[str, Any] | None = None
             mark_task(client, product_id, "product_image", "running")
             ok = quick_promote_product_image(client, product, limit=6)
             if not ok:
-                ai_payload = promote_image_from_openai(product, nameplate_data)
+                ai_payload = promote_image_from_openai(client, product, nameplate_data)
                 if ai_payload:
                     response = client.patch(
                         f"{SUPABASE_URL}/rest/v1/refrigerator_products",
@@ -384,7 +417,13 @@ def run_image_task(product_id: int, nameplate_data: dict[str, Any] | None = None
                 )
             except Exception as exc:
                 print(f"candidate cleanup skipped for product {product_id}: {exc}", flush=True)
-            mark_task(client, product_id, "product_image", "completed" if ok else "retry_later")
+            mark_task(
+                client,
+                product_id,
+                "product_image",
+                "completed" if ok else "retry_later",
+                None if ok else "No reliable product image found by CSE/Bing/OpenAI page extraction.",
+            )
         except Exception as exc:
             mark_task(client, product_id, "product_image", "retry_later", str(exc))
             print(f"instant image enrichment failed for product {product_id}: {exc}", flush=True)
