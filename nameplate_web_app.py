@@ -1,11 +1,14 @@
 ﻿import base64
 from datetime import datetime, timezone
+import hashlib
+import hmac
 import html
 import json
 import mimetypes
 import os
 import re
 import threading
+import time
 import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,6 +26,10 @@ SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_NAMEPLATE_MODEL = os.getenv("OPENAI_NAMEPLATE_MODEL", "gpt-4.1-mini")
 SHOPIFY_STORE_DOMAIN = os.getenv("SHOPIFY_STORE_DOMAIN", "").strip()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
+ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", ADMIN_PASSWORD or SUPABASE_SERVICE_ROLE_KEY).strip()
+ADMIN_COOKIE_NAME = "gasket_admin_session"
+ADMIN_SESSION_SECONDS = 60 * 60 * 12
 
 ROOT = Path(__file__).resolve().parent
 UPLOAD_DIR = ROOT / "uploads" / "customer_nameplates"
@@ -42,6 +49,42 @@ def esc(value) -> str:
 
 def money(value) -> str:
     return "TBD" if value in (None, "") else f"${float(value):,.2f}"
+
+
+def admin_signature(expires: int) -> str:
+    secret = ADMIN_SESSION_SECRET.encode("utf-8")
+    return hmac.new(secret, str(expires).encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def make_admin_cookie() -> str:
+    expires = int(time.time()) + ADMIN_SESSION_SECONDS
+    return f"{expires}:{admin_signature(expires)}"
+
+
+def parse_cookies(cookie_header: str | None) -> dict[str, str]:
+    cookies: dict[str, str] = {}
+    for part in (cookie_header or "").split(";"):
+        if "=" not in part:
+            continue
+        key, value = part.strip().split("=", 1)
+        cookies[key] = value
+    return cookies
+
+
+def is_admin_authenticated(cookie_header: str | None) -> bool:
+    if not ADMIN_PASSWORD:
+        return False
+    token = parse_cookies(cookie_header).get(ADMIN_COOKIE_NAME, "")
+    if ":" not in token:
+        return False
+    expires_text, signature = token.split(":", 1)
+    try:
+        expires = int(expires_text)
+    except ValueError:
+        return False
+    if expires < int(time.time()):
+        return False
+    return hmac.compare_digest(signature, admin_signature(expires))
 
 
 def normalize_model(value: str) -> str:
@@ -794,6 +837,19 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
 </section>""")
 
 
+def render_admin_login(message: str = "") -> bytes:
+    warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
+    config_note = "" if ADMIN_PASSWORD else "<p style='color:#9f4b12'>ADMIN_PASSWORD is not configured.</p>"
+    return page("ADMIN Login", f"""
+<section style="max-width:520px;margin:0 auto"><h2>ADMIN Login</h2>
+<p class="muted">Internal product evidence and enrichment control.</p>
+{warning}{config_note}
+<form method="post" action="/ADMIN/login">
+<label>Password</label><input type="password" name="password" autocomplete="current-password" autofocus>
+<p><button type="submit">Unlock ADMIN</button> <a class="button" href="/">Back to site</a></p>
+</form></section>""")
+
+
 def render_admin_product(product: dict, package: dict | None, items: list[dict], quote_items: list[dict]) -> bytes:
     fields = [
         ("Brand", product.get("brand")),
@@ -859,12 +915,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def redirect(self, location: str, cookie: str | None = None) -> None:
+        self.send_response(HTTPStatus.SEE_OTHER)
+        self.send_header("Location", location)
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
+        self.end_headers()
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/":
             self.send_html(render_home())
             return
         if parsed.path.lower() == "/admin":
+            if not is_admin_authenticated(self.headers.get("Cookie")):
+                self.send_html(render_admin_login())
+                return
             query = parse_qs(parsed.query)
             product_id = int(query.get("product_id", ["0"])[0] or "0")
             with httpx.Client(timeout=30) as client:
@@ -883,6 +949,9 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     return
                 self.send_html(render_admin_dashboard(get_recent_evidence_packages(client)))
+            return
+        if parsed.path.lower() == "/admin/logout":
+            self.redirect("/", f"{ADMIN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
             return
         if parsed.path in {"/read-nameplate", "/match"}:
             self.send_html(render_home("Upload a nameplate photo to start a new match."))
@@ -933,6 +1002,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if path.lower() == "/admin/login":
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length).decode("utf-8", errors="replace")
+            fields = parse_qs(body)
+            password = (fields.get("password") or [""])[0]
+            if ADMIN_PASSWORD and hmac.compare_digest(password, ADMIN_PASSWORD):
+                cookie = f"{ADMIN_COOKIE_NAME}={make_admin_cookie()}; Path=/; Max-Age={ADMIN_SESSION_SECONDS}; HttpOnly; SameSite=Lax"
+                self.redirect("/ADMIN", cookie)
+                return
+            self.send_html(render_admin_login("Wrong password."), HTTPStatus.UNAUTHORIZED)
+            return
         if path not in {"/read-nameplate", "/match"}:
             self.send_html(page("Page Not Found", "<section><h2>Page not found</h2><p class='muted'>Start from the upload page and match a refrigerator nameplate.</p><p><a class='button' href='/'>Go to upload</a></p></section>"), HTTPStatus.NOT_FOUND)
             return

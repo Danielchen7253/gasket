@@ -218,6 +218,17 @@ main{max-width:none;padding:0}
 
     def patched_do_POST(self):
         path = g["urlparse"](self.path).path
+        if path.lower() == "/admin/login":
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length).decode("utf-8", errors="replace")
+            fields = g["parse_qs"](body)
+            password = (fields.get("password") or [""])[0]
+            if g.get("ADMIN_PASSWORD") and __import__("hmac").compare_digest(password, g["ADMIN_PASSWORD"]):
+                cookie = f"{g['ADMIN_COOKIE_NAME']}={g['make_admin_cookie']()}; Path=/; Max-Age={g['ADMIN_SESSION_SECONDS']}; HttpOnly; SameSite=Lax"
+                self.redirect("/ADMIN", cookie)
+                return
+            self.send_html(g["render_admin_login"]("Wrong password."), HTTPStatus.UNAUTHORIZED)
+            return
         if path not in {"/read-nameplate", "/match"}:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
