@@ -832,7 +832,7 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
 </style>
 <section><h2>ADMIN Product Evidence</h2>
 <p class="muted">Internal view for product evidence packages, field completeness, confidence, and enrichment timestamps.</p>
-<div class="admin-actions"><a class="button" href="/">Upload page</a><a class="button" href="/ADMIN">Refresh ADMIN</a></div>
+<div class="admin-actions"><a class="button" href="/">Upload page</a><a class="button" href="/ADMIN">Refresh ADMIN</a><a class="button" href="/ADMIN/logout">Logout</a></div>
 <table class="admin-table"><thead><tr><th>ID</th><th>Product</th><th>Profile</th><th>Status</th><th>Complete</th><th>Confidence</th><th>Image</th><th>Missing</th><th>Times</th></tr></thead><tbody>{rows_html}</tbody></table>
 </section>""")
 
@@ -895,7 +895,7 @@ pre{{white-space:pre-wrap;max-height:180px;overflow:auto;background:#f8fafc;bord
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
 .admin-table th{{background:#f8fafc;color:#687385}}
 </style>
-<section><p><a class="button" href="/ADMIN">Back to ADMIN</a> <a class="button" href="/preview?product_id={esc(product.get('id'))}">Customer preview</a></p>
+<section><p><a class="button" href="/ADMIN">Back to ADMIN</a> <a class="button" href="/preview?product_id={esc(product.get('id'))}">Customer preview</a> <a class="button" href="/ADMIN/logout">Logout</a></p>
 <h2>{esc(product.get('brand'))} {esc(product.get('equipment_model'))}</h2><div class="result-grid"><div>{image_html}</div><div class="facts">{field_rows}</div></div></section>
 {package_html}
 <section><h2>Evidence items</h2><table class="admin-table"><thead><tr><th>Field</th><th>Type</th><th>Source</th><th>Supports</th><th>Confidence</th><th>JSON</th></tr></thead><tbody>{item_rows_html}</tbody></table></section>
