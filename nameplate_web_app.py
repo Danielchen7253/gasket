@@ -551,12 +551,9 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 def render_home(message: str = "") -> bytes:
     warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
     return page("Gasket Match", f"""
-<section class="hero"><div><h1>Find the Right Refrigerator Door Gasket Fast</h1>
-<p>Upload the equipment nameplate. We read it first, you confirm the details, then the site matches the live database.</p>
-<div class="summary"><div class="metric"><span>Step 1</span><strong>Upload</strong></div><div class="metric"><span>Step 2</span><strong>Confirm</strong></div><div class="metric"><span>Step 3</span><strong>Match</strong></div></div>
-</div><form method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
+<section><form id="upload" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
 <div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>
-<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div><div><label>Customer name</label><input name="customer_name"></div></div>
+<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div></div>
 <p class="muted">You can correct the brand or model before matching the database.</p></form></section>""")
 
 
@@ -701,6 +698,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/":
             self.send_html(render_home())
             return
+        if parsed.path in {"/read-nameplate", "/match"}:
+            self.send_html(render_home("Upload a nameplate photo to start a new match."))
+            return
         if parsed.path.startswith("/uploads/"):
             target = (ROOT / parsed.path.lstrip("/")).resolve()
             if not str(target).startswith(str((ROOT / "uploads").resolve())) or not target.exists():
@@ -718,7 +718,7 @@ class Handler(BaseHTTPRequestHandler):
             with httpx.Client(timeout=30) as client:
                 product = get_product(client, product_id)
                 if not product:
-                    self.send_error(HTTPStatus.NOT_FOUND)
+                    self.send_html(page("Product Not Found", "<section><h2>Product not found</h2><p class='muted'>This product record is not available yet.</p><p><a class='button' href='/'>Start a new match</a></p></section>"), HTTPStatus.NOT_FOUND)
                     return
                 positions = [] if is_unconfirmed_new_product(product) else infer_door_positions(product)
                 if positions:
@@ -743,12 +743,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
-        self.send_error(HTTPStatus.NOT_FOUND)
+        self.send_html(page("Page Not Found", "<section><h2>Page not found</h2><p class='muted'>Start from the upload page and match a refrigerator nameplate.</p><p><a class='button' href='/'>Go to upload</a></p></section>"), HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
         if path not in {"/read-nameplate", "/match"}:
-            self.send_error(HTTPStatus.NOT_FOUND)
+            self.send_html(page("Page Not Found", "<section><h2>Page not found</h2><p class='muted'>Start from the upload page and match a refrigerator nameplate.</p><p><a class='button' href='/'>Go to upload</a></p></section>"), HTTPStatus.NOT_FOUND)
             return
         fields = parse_multipart(self.rfile.read(int(self.headers.get("Content-Length", "0"))), self.headers.get("Content-Type", ""))
         brand = fields.get("brand", {}).get("text", "").strip()
