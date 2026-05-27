@@ -90,7 +90,6 @@ AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match th
         warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
         upload_style = """
 <style>
-body>header{display:none}
 main{max-width:none;padding:0}
 .work-zone{max-width:1180px;margin:0 auto}
 .work-shell{background:#eef3f6;min-height:100vh;padding:56px 22px 80px}
