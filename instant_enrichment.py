@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 import os
 import re
 import threading
@@ -235,6 +236,110 @@ def mark_task(client: httpx.Client, product_id: int, task_type: str, status: str
     response.raise_for_status()
 
 
+def extract_json_object(value: str) -> dict[str, Any]:
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", value or "", re.S)
+        if not match:
+            raise
+        return json.loads(match.group(0))
+
+
+def promote_image_from_openai(product: dict[str, Any], nameplate_data: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return None
+    brand = compact(product.get("brand"))
+    model = compact(product.get("equipment_model"))
+    if not brand or not model:
+        return None
+
+    prompt = f"""
+Find one usable main product photo URL for this refrigerator.
+
+Brand: {brand}
+Model: {model}
+Nameplate JSON: {json.dumps(nameplate_data or {}, ensure_ascii=False)}
+
+Rules:
+- Return only a real refrigerator product photo, not a logo, icon, gasket, part photo, manual cover, diagram, or placeholder.
+- Prefer manufacturer, retailer, appliance parts, or archived product pages.
+- The product must match the exact confirmed model or a clearly compatible same-family model.
+- If no reliable photo exists, return null image_url and explain why.
+- Return JSON only.
+"""
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "image_url": {"type": ["string", "null"]},
+            "source_url": {"type": ["string", "null"]},
+            "title": {"type": ["string", "null"]},
+            "confidence_score": {"type": ["number", "null"]},
+            "evidence_summary": {"type": ["string", "null"]},
+        },
+        "required": ["image_url", "source_url", "title", "confidence_score", "evidence_summary"],
+    }
+    errors = []
+    for model_name, tool_type in [
+        (os.getenv("OPENAI_PRODUCT_RESEARCH_MODEL", "gpt-4.1"), "web_search"),
+        (os.getenv("OPENAI_PRODUCT_RESEARCH_MODEL", "gpt-4.1"), "web_search_preview"),
+        ("gpt-4.1-mini", "web_search_preview"),
+    ]:
+        response = httpx.post(
+            "https://api.openai.com/v1/responses",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model_name,
+                "tools": [{"type": tool_type}],
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "name": "product_image_result",
+                        "schema": schema,
+                        "strict": False,
+                    }
+                },
+                "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
+            },
+            timeout=90,
+        )
+        if response.status_code >= 400:
+            errors.append(f"{model_name}/{tool_type}: {response.status_code} {response.text[:200]}")
+            continue
+        data = response.json()
+        output_text = data.get("output_text")
+        if not output_text:
+            texts = []
+            for item in data.get("output", []):
+                for content in item.get("content", []):
+                    if content.get("text"):
+                        texts.append(content["text"])
+            output_text = "\n".join(texts)
+        result = extract_json_object(output_text or "{}")
+        image_url = compact(result.get("image_url"))
+        if not image_url.startswith(("http://", "https://")):
+            return None
+        haystack = re.sub(r"[^A-Z0-9]", "", " ".join([
+            image_url,
+            compact(result.get("source_url")),
+            compact(result.get("title")),
+        ]).upper())
+        if any(token in haystack for token in ["LOGO", "ICON", "GASKET", "SEAL", "PART", "DIAGRAM", "MANUAL"]):
+            return None
+        return {
+            "product_image_url": image_url,
+            "product_image_source_url": result.get("source_url"),
+            "product_image_confidence": max(60, min(100, float(result.get("confidence_score") or 70))),
+            "data_source_summary": product.get("data_source_summary") or result.get("evidence_summary"),
+            "updated_at": now_iso(),
+        }
+    if errors:
+        raise RuntimeError("OpenAI image search failed: " + " | ".join(errors))
+    return None
+
+
 def run_ai_structure_task(product_id: int, nameplate_data: dict[str, Any]) -> None:
     with httpx.Client(timeout=45) as client:
         product = get_product(client, product_id)
@@ -252,14 +357,25 @@ def run_ai_structure_task(product_id: int, nameplate_data: dict[str, Any]) -> No
             print(f"instant AI enrichment failed for product {product_id}: {exc}", flush=True)
 
 
-def run_image_task(product_id: int) -> None:
-    with httpx.Client(timeout=18) as client:
+def run_image_task(product_id: int, nameplate_data: dict[str, Any] | None = None) -> None:
+    with httpx.Client(timeout=120) as client:
         product = get_product(client, product_id)
         if not product or product.get("product_image_url"):
             return
         try:
             mark_task(client, product_id, "product_image", "running")
             ok = quick_promote_product_image(client, product, limit=6)
+            if not ok:
+                ai_payload = promote_image_from_openai(product, nameplate_data)
+                if ai_payload:
+                    response = client.patch(
+                        f"{SUPABASE_URL}/rest/v1/refrigerator_products",
+                        params={"id": f"eq.{product_id}"},
+                        headers=supabase_headers("return=minimal"),
+                        json={key: value for key, value in ai_payload.items() if value not in (None, "")},
+                    )
+                    response.raise_for_status()
+                    ok = True
             try:
                 client.delete(
                     f"{SUPABASE_URL}/rest/v1/product_image_candidates",
@@ -290,7 +406,7 @@ def start_instant_enrichment(product_id: int, nameplate_data: dict[str, Any] | N
 
             threads: list[threading.Thread] = []
             if any(task["task_type"] == "product_image" for task in tasks):
-                threads.append(threading.Thread(target=run_image_task, args=(product_id,), daemon=True))
+                threads.append(threading.Thread(target=run_image_task, args=(product_id, nameplate_data or {}), daemon=True))
             if any(task["task_type"] in {"product_structure", "gasket_records"} for task in tasks):
                 threads.append(threading.Thread(target=run_ai_structure_task, args=(product_id, nameplate_data or {}), daemon=True))
             for thread in threads:
