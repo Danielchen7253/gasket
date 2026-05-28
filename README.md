@@ -22,7 +22,10 @@ Required environment variables:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `GOOGLE_API_KEY` optional for image search
 - `GOOGLE_CSE_ID` optional for image search
-- `OPENAI_API_KEY` optional for OCR/nameplate extraction
+- `OPENAI_API_KEY` fallback OpenAI key
+- `OPENAI_NAMEPLATE_API_KEY` optional dedicated key for nameplate image reading
+- `OPENAI_RESEARCH_API_KEY` optional dedicated key for product/gasket research
+- `OPENAI_IMAGE_API_KEY` optional dedicated key for image-search fallback
 
 ## Render data pipeline
 

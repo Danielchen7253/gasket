@@ -297,7 +297,7 @@ def promote_image_from_openai(
     product: dict[str, Any],
     nameplate_data: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    api_key = os.getenv("OPENAI_IMAGE_API_KEY", os.getenv("OPENAI_API_KEY", "")).strip()
     if not api_key:
         return None
     brand = compact(product.get("brand"))

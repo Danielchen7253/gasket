@@ -20,6 +20,10 @@ load_dotenv(Path(__file__).with_name(".env"))
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_RESEARCH_API_KEY = os.getenv(
+    "OPENAI_RESEARCH_API_KEY",
+    os.getenv("OPENAI_PRODUCT_RESEARCH_API_KEY", OPENAI_API_KEY),
+).strip()
 AI_RESEARCH_MODEL = os.getenv("OPENAI_PRODUCT_RESEARCH_MODEL", "gpt-4.1")
 
 
@@ -288,7 +292,7 @@ Focus only on refrigerator door gasket information:
 
 
 def _call_openai_research(prompt: str) -> dict[str, Any]:
-    if not OPENAI_API_KEY:
+    if not OPENAI_RESEARCH_API_KEY:
         raise RuntimeError("OpenAI key not configured")
     response = None
     errors = []
@@ -318,7 +322,7 @@ def _call_openai_research(prompt: str) -> dict[str, Any]:
         }
         response = httpx.post(
             "https://api.openai.com/v1/responses",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {OPENAI_RESEARCH_API_KEY}", "Content-Type": "application/json"},
             json=payload,
             timeout=120,
         )

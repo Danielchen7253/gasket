@@ -24,6 +24,7 @@ load_dotenv(Path(__file__).with_name(".env"))
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_NAMEPLATE_API_KEY = os.getenv("OPENAI_NAMEPLATE_API_KEY", OPENAI_API_KEY).strip()
 OPENAI_NAMEPLATE_MODEL = os.getenv("OPENAI_NAMEPLATE_MODEL", "gpt-4.1-mini")
 SHOPIFY_STORE_DOMAIN = os.getenv("SHOPIFY_STORE_DOMAIN", "").strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
@@ -236,7 +237,7 @@ def extract_json_object(value: str) -> dict:
 
 
 def identify_nameplate(image_bytes: bytes, filename: str) -> dict:
-    if not OPENAI_API_KEY:
+    if not OPENAI_NAMEPLATE_API_KEY:
         raise RuntimeError("OpenAI key not configured")
     mime_type = mimetypes.guess_type(filename)[0] or "image/jpeg"
     encoded = base64.b64encode(image_bytes).decode("ascii")
@@ -259,7 +260,7 @@ def identify_nameplate(image_bytes: bytes, filename: str) -> dict:
     for attempt in range(3):
         response = httpx.post(
             "https://api.openai.com/v1/responses",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {OPENAI_NAMEPLATE_API_KEY}", "Content-Type": "application/json"},
             json=payload,
             timeout=60,
         )
