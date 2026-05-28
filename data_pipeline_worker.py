@@ -9,6 +9,7 @@ import gasket_enrichment_crawler
 import gasket_spec_refresher
 import market_discovery_v2 as market_discovery_crawler
 import product_image_search_crawler
+import comprehensive_backfill_worker
 
 
 load_dotenv(Path(__file__).with_name(".env"))
@@ -84,6 +85,7 @@ def main() -> None:
     cycles = int(os.getenv("PIPELINE_CYCLES", "1"))
     pause_seconds = float(os.getenv("PIPELINE_PAUSE_SECONDS", "0"))
     image_backfill_enabled = os.getenv("PIPELINE_IMAGE_BACKFILL_ENABLED", "0") == "1"
+    comprehensive_backfill_enabled = os.getenv("PIPELINE_COMPREHENSIVE_BACKFILL_ENABLED", "1") == "1"
 
     for index in range(cycles):
         print(f"pipeline cycle {index + 1}/{cycles}")
@@ -97,6 +99,10 @@ def main() -> None:
         run_step("gasket spec refresh", gasket_spec_refresher.main)
         run_step("gasket data backfill", gasket_enrichment_crawler.main)
         run_step("gasket spec refresh after crawl", gasket_spec_refresher.main)
+        if comprehensive_backfill_enabled:
+            run_step("comprehensive product backfill", comprehensive_backfill_worker.main)
+        else:
+            print("skipping comprehensive product backfill")
         if index + 1 < cycles and pause_seconds:
             time.sleep(pause_seconds)
 
