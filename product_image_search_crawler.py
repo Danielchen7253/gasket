@@ -64,6 +64,18 @@ BAD_IMAGE_TOKENS = [
     "DEVIANTART",
     "SCRIBD",
 ]
+NON_PRODUCT_IMAGE_TOKENS = [
+    "WATERFILTER",
+    "AIRFILTER",
+    "REPAIRHELP",
+    "PARTSELECT",
+    "PARTSDIRECT",
+    "SEARSPARTSDIRECT",
+    "YOUTUBE",
+    "MAXRESDEFAULT",
+    "CONSUMERREPORTS",
+    "PDCATEGORY",
+]
 
 
 def supabase_headers(prefer: str | None = None) -> dict[str, str]:
@@ -141,6 +153,12 @@ def model_family_tokens(model: str) -> list[str]:
         tokens.append(value[:-2])
     if len(value) > 1 and value[-1].isdigit():
         tokens.append(value[:-1])
+    if len(value) >= 6:
+        tokens.append(value[:6])
+    if len(value) >= 5:
+        tokens.append(value[:5])
+    if len(value) >= 3:
+        tokens.append(value[:3])
     return [token for index, token in enumerate(tokens) if token and token not in tokens[:index]]
 
 
@@ -194,8 +212,19 @@ def score_candidate(product: dict, candidate: dict) -> float:
         score += 10
     if any(token in haystack for token in ["FRENCHDOOR", "BOTTOMFREEZER", "SIDEBYSIDE", "REACHIN"]):
         score += 6
+    product_type_n = normalized(product.get("product_type") or "")
+    if "FRENCHDOOR" in product_type_n and "FRENCHDOOR" in haystack:
+        score += 18
+    if "BOTTOMFREEZER" in product_type_n and "BOTTOMFREEZER" in haystack:
+        score += 12
+    if brand_n and brand_n in haystack and family_tokens and any(token and token in haystack for token in family_tokens[-3:]):
+        score += 12
+    if any(domain in haystack for domain in ["AJMADISON", "BESTBUY", "LOWES", "HOMEDEPOT", "CANADIANAPPLIANCE"]):
+        score += 8
     if any(token in haystack for token in ["LOGO", "ICON", "GASKET", "PART", "THUMBNAIL"]):
         score -= 20
+    if any(token in haystack for token in NON_PRODUCT_IMAGE_TOKENS):
+        score -= 35
     if any(token in haystack for token in BAD_IMAGE_TOKENS):
         score -= 35
     if is_blocked_domain(candidate.get("image_url")) or is_blocked_domain(candidate.get("page_url")):
@@ -835,6 +864,8 @@ def is_usable_image(candidate: dict) -> bool:
     )
     if any(token in haystack for token in BAD_IMAGE_TOKENS):
         return score >= 90
+    if any(token in haystack for token in NON_PRODUCT_IMAGE_TOKENS):
+        return False
     return True
 
 

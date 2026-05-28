@@ -277,7 +277,11 @@ def quick_promote_product_image(client, product: dict, limit: int = 6) -> bool:
         return True
 
     def strong(rows):
-        return [row for row in rows if score_candidate(product, row) >= MIN_PROMOTE_SCORE]
+        return sorted(
+            [row for row in rows if score_candidate(product, row) >= MIN_PROMOTE_SCORE],
+            key=lambda row: score_candidate(product, row),
+            reverse=True,
+        )
 
     raw_candidates = strong(search_serpapi(client, product))[:limit]
     if not raw_candidates:
