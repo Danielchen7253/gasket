@@ -176,6 +176,52 @@ def clean_door_key(value: str | None, index: int) -> str:
     return key[:80]
 
 
+def default_door_positions(count: int, layout_hint: str = "") -> list[dict[str, str]]:
+    hint = normalize_model(layout_hint)
+    if count == 3 and ("FRENCH" in hint or "BOTTOMFREEZER" in hint or "FREEZERDRAWER" in hint):
+        rows = [
+            ("left_fresh_food_door", "Left refrigerator door"),
+            ("right_fresh_food_door", "Right refrigerator door"),
+            ("freezer_drawer", "Freezer drawer"),
+        ]
+    elif count == 2:
+        rows = [("left_door", "Left Door"), ("right_door", "Right Door")]
+    elif count == 1:
+        rows = [("single_door", "Single Door")]
+    elif count == 4:
+        rows = [
+            ("upper_left_door", "Upper Left Door"),
+            ("upper_right_door", "Upper Right Door"),
+            ("lower_left_door", "Lower Left Door"),
+            ("lower_right_door", "Lower Right Door"),
+        ]
+    else:
+        rows = [(f"door_{index}", f"Door {index}") for index in range(1, max(count, 0) + 1)]
+    return [{"key": key, "label": label} for key, label in rows]
+
+
+def reconcile_door_positions(product: dict[str, Any], positions: list[dict[str, str]]) -> list[dict[str, str]]:
+    try:
+        count = int(product.get("door_count") or 0)
+    except Exception:
+        count = 0
+    layout_hint = " ".join(
+        str(product.get(key) or "")
+        for key in ("door_layout", "product_type", "source_summary")
+    )
+    expected = default_door_positions(count, layout_hint) if count else []
+    if not expected:
+        return positions
+    keys = {item.get("key") for item in positions}
+    merged = list(positions)
+    for item in expected:
+        if item["key"] not in keys:
+            merged.append(item)
+    if len(merged) >= len(expected):
+        return merged
+    return positions
+
+
 def build_prompt(brand: str, model: str, nameplate_data: dict[str, Any] | None) -> str:
     nameplate = json.dumps(nameplate_data or {}, ensure_ascii=False)
     preferred_sources = trusted_source_prompt()
@@ -397,10 +443,19 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
             positions.append({"key": key, "label": label})
 
     if positions:
+        positions = reconcile_door_positions(product, positions)
         product["door_positions"] = positions
         product["door_count"] = len(positions)
         if not product.get("door_layout"):
             product["door_layout"] = "_".join([str(len(positions)), "door"])
+
+    if not positions:
+        positions = reconcile_door_positions(product, [])
+        if positions:
+            product["door_positions"] = positions
+            product["door_count"] = len(positions)
+            if not product.get("door_layout"):
+                product["door_layout"] = "_".join([str(len(positions)), "door"])
 
     if not gaskets and positions:
         gaskets = [
@@ -423,6 +478,28 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
         ]
 
     normalized_gaskets = []
+    existing_gasket_keys = {clean_door_key(row.get("door_position"), index) for index, row in enumerate(gaskets, start=1)}
+    for position in positions:
+        if position["key"] in existing_gasket_keys:
+            continue
+        gaskets.append(
+            {
+                "door_index": len(gaskets) + 1,
+                "door_position": position["key"],
+                "door_position_display": position["label"],
+                "gasket_name": f"{position['label']} gasket",
+                "dimensions_text": "Customer measurement required",
+                "gasket_install_type": "magnetic gasket",
+                "size_status": "unknown",
+                "source_name": "Door layout reconciliation",
+                "source_url": product.get("official_product_url") or product.get("manual_url"),
+                "evidence_summary": "Door position is required by the product door layout; gasket detail still needs source confirmation.",
+                "confidence_score": 45,
+                "needs_customer_confirmation": True,
+                "customer_confirmation_note": "Confirm dimensions and profile before production.",
+            }
+        )
+
     for index, row in enumerate(gaskets, start=1):
         door_index = as_int(row.get("door_index")) or index
         key = clean_door_key(row.get("door_position"), door_index)

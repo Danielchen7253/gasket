@@ -140,36 +140,54 @@ def model_similarity_score(wanted: str, candidate: str) -> float:
     return 0
 
 
-def door_positions_for_count(count: int) -> list[dict]:
-    layouts = {
-        1: [("single_door", "Single Door")],
-        2: [("left_door", "Left Door"), ("right_door", "Right Door")],
-        3: [("top_door", "Top Door"), ("left_door", "Left Door"), ("right_door", "Right Door")],
-        4: [
-            ("upper_left_door", "Upper Left Door"),
-            ("upper_right_door", "Upper Right Door"),
-            ("lower_left_door", "Lower Left Door"),
-            ("lower_right_door", "Lower Right Door"),
-        ],
-    }
-    return [{"key": key, "label": label} for key, label in layouts.get(count, [])]
+def door_positions_for_count(count: int, layout_hint: str = "") -> list[dict]:
+    hint = normalize_model(layout_hint)
+    if count == 3 and ("FRENCH" in hint or "BOTTOMFREEZER" in hint or "FREEZERDRAWER" in hint):
+        rows = [
+            ("left_fresh_food_door", "Left refrigerator door"),
+            ("right_fresh_food_door", "Right refrigerator door"),
+            ("freezer_drawer", "Freezer drawer"),
+        ]
+    else:
+        layouts = {
+            1: [("single_door", "Single Door")],
+            2: [("left_door", "Left Door"), ("right_door", "Right Door")],
+            3: [("top_door", "Top Door"), ("left_door", "Left Door"), ("right_door", "Right Door")],
+            4: [
+                ("upper_left_door", "Upper Left Door"),
+                ("upper_right_door", "Upper Right Door"),
+                ("lower_left_door", "Lower Left Door"),
+                ("lower_right_door", "Lower Right Door"),
+            ],
+        }
+        rows = layouts.get(count, [])
+    return [{"key": key, "label": label} for key, label in rows]
 
 
 def infer_door_positions(product: dict) -> list[dict]:
     existing = product.get("door_positions")
-    if isinstance(existing, list) and existing:
-        return existing
     try:
         count = int(product.get("door_count") or 0)
     except Exception:
         count = 0
     if not count:
         count = estimated_gasket_quantity(product, [])
-    return door_positions_for_count(max(1, min(4, count)))
+    layout_hint = " ".join(str(product.get(key) or "") for key in ("door_layout", "product_type", "data_source_summary"))
+    expected = door_positions_for_count(max(1, min(4, count)), layout_hint)
+    if isinstance(existing, list) and existing:
+        keys = {item.get("key") for item in existing if isinstance(item, dict)}
+        merged = list(existing)
+        for item in expected:
+            if item["key"] not in keys:
+                merged.append(item)
+        return merged
+    return expected
 
 
 def door_layout_name(positions: list[dict]) -> str:
     keys = [item.get("key") for item in positions]
+    if keys == ["left_fresh_food_door", "right_fresh_food_door", "freezer_drawer"]:
+        return "french_door_bottom_freezer"
     if keys == ["left_door", "right_door"]:
         return "side_by_side_2_door"
     if keys == ["top_door", "left_door", "right_door"]:
@@ -519,7 +537,7 @@ def get_recent_evidence_packages(client: httpx.Client, limit: int = 30) -> list[
 
 
 def save_inferred_door_layout(client: httpx.Client, product: dict, positions: list[dict]) -> None:
-    if product.get("door_positions") or not positions:
+    if not positions:
         return
     payload = {
         "door_count": len(positions),
