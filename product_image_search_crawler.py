@@ -31,6 +31,36 @@ USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
 )
+BLOCKED_IMAGE_DOMAINS = {
+    "xhamster.com",
+    "xhamster.desi",
+    "pornhub.com",
+    "xvideos.com",
+    "deviantart.com",
+    "womensalphabet.com",
+    "scribd.com",
+    "yumpu.com",
+    "sec.gov",
+}
+BAD_IMAGE_TOKENS = [
+    "LOGO",
+    "ICON",
+    "GASKET",
+    "SEAL",
+    "PART",
+    "PARTS",
+    "DIAGRAM",
+    "MANUAL",
+    "THUMBNAIL",
+    "PORN",
+    "SEX",
+    "ADULT",
+    "NUDE",
+    "BBW",
+    "GALLERY",
+    "DEVIANTART",
+    "SCRIBD",
+]
 
 
 def supabase_headers(prefer: str | None = None) -> dict[str, str]:
@@ -48,9 +78,23 @@ def normalized(value: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (value or "").upper())
 
 
+def url_domain(url: str | None) -> str:
+    try:
+        return urlparse(url or "").netloc.lower().removeprefix("www.")
+    except Exception:
+        return ""
+
+
+def is_blocked_domain(url: str | None) -> bool:
+    domain = url_domain(url)
+    return any(domain == blocked or domain.endswith("." + blocked) for blocked in BLOCKED_IMAGE_DOMAINS)
+
+
 def is_displayable_image_url(client: httpx.Client, url: str | None, timeout: float = 5.0) -> bool:
     """Return True only when the stored URL currently resolves to an image-like response."""
     if not url or not str(url).startswith(("http://", "https://")):
+        return False
+    if is_blocked_domain(url):
         return False
 
     headers = {
@@ -149,6 +193,10 @@ def score_candidate(product: dict, candidate: dict) -> float:
         score += 6
     if any(token in haystack for token in ["LOGO", "ICON", "GASKET", "PART", "THUMBNAIL"]):
         score -= 20
+    if any(token in haystack for token in BAD_IMAGE_TOKENS):
+        score -= 35
+    if is_blocked_domain(candidate.get("image_url")) or is_blocked_domain(candidate.get("page_url")):
+        score -= 80
     if any(token in haystack for token in ["SMALL", "THUMB", "TINY"]):
         score -= 10
     if "MEDIUM" in haystack:
@@ -299,6 +347,12 @@ def search_google_cse(client: httpx.Client, product: dict) -> list[dict]:
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         hint = "check Custom Search JSON API enablement, key restrictions, and CSE image settings"
+        try:
+            message = (exc.response.json().get("error") or {}).get("message")
+        except Exception:
+            message = None
+        if message:
+            hint = f"{hint}; Google says: {message}"
         print(f"Google image search skipped for {product['brand']} {product['equipment_model']}: HTTP {status}; {hint}")
         return []
     data = response.json()
@@ -556,6 +610,8 @@ def get_existing_candidates(client: httpx.Client, product_id: int, limit: int = 
 
 
 def is_usable_image(candidate: dict) -> bool:
+    if is_blocked_domain(candidate.get("image_url")) or is_blocked_domain(candidate.get("page_url")):
+        return False
     score = float(candidate.get("match_score") or 0)
     if score < MIN_PROMOTE_SCORE:
         return False
@@ -571,7 +627,7 @@ def is_usable_image(candidate: dict) -> bool:
             for key in ["image_title", "title", "image_url", "page_url", "source_name"]
         )
     )
-    if any(token in haystack for token in ["LOGO", "ICON", "GASKET", "PART", "THUMBNAIL"]):
+    if any(token in haystack for token in BAD_IMAGE_TOKENS):
         return score >= 90
     return True
 
