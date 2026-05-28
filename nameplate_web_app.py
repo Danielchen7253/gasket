@@ -716,8 +716,8 @@ def render_confirm_nameplate(upload_url: str, customer: dict, nameplate_data: di
     if nameplate_data.get("recognition_error"):
         recognition_notice = """
 <div class="model-check-notice">
-<strong>AI reading is temporarily busy.</strong>
-OpenAI is rate-limited right now. The uploaded photo is saved; type the brand and model from the nameplate, then continue matching.
+<strong>Please type the brand and model from the nameplate.</strong>
+Automatic reading is unavailable right now. The uploaded photo is saved; enter the exact brand and model, then continue matching.
 </div>"""
     model_notice = """
 <div class="model-check-notice">

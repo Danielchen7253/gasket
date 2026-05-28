@@ -57,8 +57,8 @@ AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match th
         raw_text = nameplate_data.get("raw_text") or ""
         recognition_error = nameplate_data.get("recognition_error")
         recognition_notice = (
-            f"""<div class="model-check-notice"><strong>AI reading is temporarily busy.</strong>
-OpenAI is rate-limited right now. The uploaded photo is saved; type the brand and model from the nameplate, then continue matching.</div>"""
+            f"""<div class="model-check-notice"><strong>Please type the brand and model from the nameplate.</strong>
+Automatic reading is unavailable right now. The uploaded photo is saved; enter the exact brand and model, then continue matching.</div>"""
             if recognition_error else ""
         )
         return g["page"]("Confirm Nameplate", f"""
