@@ -19,7 +19,7 @@ load_dotenv(os.path.join(os.path.dirname(ROOT), ".env"))
 
 from ai_product_research import enrich_confirmed_product
 from fast_image_patch import quick_promote_product_image
-from product_image_search_crawler import supabase_headers
+from product_image_search_crawler import is_displayable_image_url, supabase_headers
 from trusted_sources import trusted_source_prompt
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
@@ -183,7 +183,7 @@ def upsert_known_product_from_nameplate(
 
 def missing_tasks(client: httpx.Client, product: dict[str, Any]) -> list[dict[str, Any]]:
     tasks: list[dict[str, Any]] = []
-    if not product.get("product_image_url"):
+    if not is_displayable_image_url(client, product.get("product_image_url"), timeout=3.0):
         tasks.append({"task_type": "product_image", "field_name": "product_image_url", "priority": 10})
     if not product.get("product_type") or not product.get("door_positions") or not product.get("door_count"):
         tasks.append({"task_type": "product_structure", "field_name": "product_type_and_door_layout", "priority": 20})
@@ -366,6 +366,8 @@ Rules:
         ]).upper())
         if any(token in haystack for token in ["LOGO", "ICON", "GASKET", "SEAL", "PART", "DIAGRAM", "MANUAL"]):
             return None
+        if not is_displayable_image_url(client, image_url):
+            return None
         return {
             "product_image_url": image_url,
             "product_image_source_url": source_url or result.get("source_url"),
@@ -398,10 +400,24 @@ def run_ai_structure_task(product_id: int, nameplate_data: dict[str, Any]) -> No
 def run_image_task(product_id: int, nameplate_data: dict[str, Any] | None = None) -> None:
     with httpx.Client(timeout=120) as client:
         product = get_product(client, product_id)
-        if not product or product.get("product_image_url"):
+        if not product:
+            return
+        if is_displayable_image_url(client, product.get("product_image_url"), timeout=3.0):
             return
         try:
             mark_task(client, product_id, "product_image", "running")
+            if product.get("product_image_url"):
+                patch_product(
+                    client,
+                    product_id,
+                    {
+                        "product_image_url": None,
+                        "product_image_source_url": None,
+                        "product_image_confidence": None,
+                        "updated_at": now_iso(),
+                    },
+                )
+                product = get_product(client, product_id) or product
             ok = quick_promote_product_image(client, product, limit=6)
             if not ok:
                 ai_payload = promote_image_from_openai(client, product, nameplate_data)

@@ -154,8 +154,17 @@ main{max-width:none;padding:0}
     def patched_render_result(product, quote_items, request, upload_url):
         nameplate_data = (request or {}).get("nameplate_data") or {}
         pending_new = g["is_unconfirmed_new_product"](product)
-        g["trigger_background_refresh"](product["id"], not product.get("product_image_url"), not quote_items)
         product_img = product.get("product_image_url")
+        if product_img:
+            try:
+                from product_image_search_crawler import is_displayable_image_url
+
+                with httpx.Client(timeout=5) as image_client:
+                    if not is_displayable_image_url(image_client, product_img, timeout=3.0):
+                        product_img = None
+            except Exception:
+                product_img = None
+        g["trigger_background_refresh"](product["id"], not product_img, not quote_items)
         needs_image = not bool(product_img)
         needs_gasket = not bool(quote_items)
         product_loading = "&#22270;&#29255;&#27491;&#22312;&#21152;&#36733;"
@@ -345,10 +354,19 @@ main{max-width:none;padding:0}
                 with httpx.Client(timeout=30) as client:
                     product = g["get_product"](client, product_id)
                     quote_items = g["get_quote_items"](client, product_id) if product else []
+                    product_img = product.get("product_image_url") if product else None
+                    if product_img:
+                        try:
+                            from product_image_search_crawler import is_displayable_image_url
+
+                            if not is_displayable_image_url(client, product_img, timeout=3.0):
+                                product_img = None
+                        except Exception:
+                            product_img = None
                 if product:
-                    g["trigger_background_refresh"](product_id, not product.get("product_image_url"), not quote_items)
+                    g["trigger_background_refresh"](product_id, not product_img, not quote_items)
                 data = {
-                    "product_image_url": product.get("product_image_url") if product else None,
+                    "product_image_url": product_img,
                     "quote_item_count": len(quote_items),
                 }
                 payload = g["json"].dumps(data).encode("utf-8")

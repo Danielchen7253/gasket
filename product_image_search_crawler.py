@@ -48,6 +48,45 @@ def normalized(value: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (value or "").upper())
 
 
+def is_displayable_image_url(client: httpx.Client, url: str | None, timeout: float = 5.0) -> bool:
+    """Return True only when the stored URL currently resolves to an image-like response."""
+    if not url or not str(url).startswith(("http://", "https://")):
+        return False
+
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    }
+    image_ext = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif")
+
+    def looks_like_image(response: httpx.Response) -> bool:
+        if response.status_code < 200 or response.status_code >= 400:
+            return False
+        content_type = (response.headers.get("content-type") or "").lower()
+        clean_url = str(response.url).split("?", 1)[0].lower()
+        if "image/" in content_type:
+            return True
+        if clean_url.endswith(image_ext) and (not content_type or any(token in content_type for token in ["octet-stream", "binary"])):
+            return True
+        return False
+
+    try:
+        response = client.head(url, headers=headers, timeout=timeout, follow_redirects=True)
+        if looks_like_image(response):
+            return True
+        if response.status_code in {403, 405} or response.status_code < 200 or response.status_code >= 400:
+            response = client.get(
+                url,
+                headers={**headers, "Range": "bytes=0-4095"},
+                timeout=timeout,
+                follow_redirects=True,
+            )
+            return looks_like_image(response)
+        return False
+    except Exception:
+        return False
+
+
 def model_family_tokens(model: str) -> list[str]:
     value = normalized(model)
     tokens = [value] if value else []
@@ -562,7 +601,14 @@ def promote_best_image(client: httpx.Client, product: dict, candidates: list[dic
     usable = [candidate for candidate in candidates if is_usable_image(candidate)]
     if not usable:
         return False
-    best = max(usable, key=image_quality_score)
+    usable = sorted(usable, key=image_quality_score, reverse=True)
+    best = None
+    for candidate in usable:
+        if is_displayable_image_url(client, candidate.get("image_url")):
+            best = candidate
+            break
+    if not best:
+        return False
     best_score = float(best.get("match_score") or 0)
     current_score = float(product.get("product_image_confidence") or 0)
     current_candidate = {
