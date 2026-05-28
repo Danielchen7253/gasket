@@ -480,6 +480,8 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
     normalized_gaskets = []
     existing_gasket_keys = {clean_door_key(row.get("door_position"), index) for index, row in enumerate(gaskets, start=1)}
     for position in positions:
+        if gaskets and len(gaskets) >= len(positions):
+            break
         if position["key"] in existing_gasket_keys:
             continue
         gaskets.append(
@@ -500,10 +502,15 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
             }
         )
 
+    used_gasket_keys: set[str] = set()
     for index, row in enumerate(gaskets, start=1):
         door_index = as_int(row.get("door_index")) or index
         key = clean_door_key(row.get("door_position"), door_index)
         label = row.get("door_position_display") or key.replace("_", " ").title()
+        if key in used_gasket_keys:
+            label_key = clean_door_key(label, door_index)
+            key = label_key if label_key not in used_gasket_keys else f"{key}_{door_index}"
+        used_gasket_keys.add(key)
         width = as_float(row.get("width_in"))
         height = as_float(row.get("height_in"))
         base_price = price_for_dimensions(width, height)
@@ -540,7 +547,18 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
             }
         )
 
-    return {"product": product, "gaskets": normalized_gaskets, "_raw_output": research.get("_raw_output")}
+    unique_gaskets: list[dict[str, Any]] = []
+    seen_display_keys: set[str] = set()
+    for row in sorted(normalized_gaskets, key=lambda item: float(item.get("confidence_score") or 0), reverse=True):
+        display_key = normalize_model(row.get("door_position_display") or row.get("door_position"))
+        if display_key and display_key in seen_display_keys:
+            continue
+        if display_key:
+            seen_display_keys.add(display_key)
+        unique_gaskets.append(row)
+    unique_gaskets.sort(key=lambda item: int(item.get("door_index") or 999))
+
+    return {"product": product, "gaskets": unique_gaskets, "_raw_output": research.get("_raw_output")}
 
 
 def update_product(client: httpx.Client, product_id: int, research: dict[str, Any]) -> dict[str, Any]:
@@ -778,5 +796,8 @@ def enrich_confirmed_product(
         upsert_product_gasket_spec(client, product_id, normalized)
     except Exception as exc:
         print(f"compat product_gasket_specs upsert skipped for {brand} {model}: {exc}", flush=True)
-    refresh_quote_items(client, product_id)
+    try:
+        refresh_quote_items(client, product_id)
+    except Exception as exc:
+        print(f"quote item refresh skipped for {brand} {model}: {exc}", flush=True)
     return updated or product
