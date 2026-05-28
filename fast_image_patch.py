@@ -1,6 +1,7 @@
 """Fast product-image promotion for customer-facing page loads."""
 
 import json
+from difflib import SequenceMatcher
 from html import unescape
 
 from bs4 import BeautifulSoup
@@ -19,6 +20,23 @@ from product_image_search_crawler import (
     search_public_web_images,
     supabase_headers,
 )
+
+
+def model_similarity(left: str | None, right: str | None) -> float:
+    left_norm = normalized(left or "")
+    right_norm = normalized(right or "")
+    if not left_norm or not right_norm:
+        return 0.0
+    if left_norm == right_norm:
+        return 1.0
+    prefix = 0
+    for a, b in zip(left_norm, right_norm):
+        if a != b:
+            break
+        prefix += 1
+    ratio = SequenceMatcher(None, left_norm, right_norm).ratio()
+    prefix_bonus = min(prefix / max(len(left_norm), len(right_norm)), 1.0) * 0.18
+    return min(1.0, ratio + prefix_bonus)
 
 
 def save_fast_candidate(client, product: dict, candidate: dict, score_override: float | None = None) -> dict:
@@ -48,6 +66,56 @@ def save_fast_candidate(client, product: dict, candidate: dict, score_override: 
     response.raise_for_status()
     saved = response.json()
     return saved[0] if saved else row
+
+
+def promote_sibling_model_image(client, product: dict) -> bool:
+    brand = product.get("brand") or ""
+    model = product.get("equipment_model") or ""
+    if not brand or not model:
+        return False
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/refrigerator_products",
+        headers=supabase_headers(),
+        params={
+            "select": "id,brand,equipment_model,product_type,door_count,door_layout,product_image_url,product_image_source_url,product_image_confidence",
+            "brand": f"ilike.{brand}",
+            "product_image_url": "not.is.null",
+            "limit": "80",
+            "order": "updated_at.desc",
+        },
+    )
+    response.raise_for_status()
+    best = None
+    best_score = 0.0
+    for row in response.json():
+        if row.get("id") == product.get("id"):
+            continue
+        image_url = row.get("product_image_url")
+        if not image_url:
+            continue
+        similarity = model_similarity(model, row.get("equipment_model"))
+        if similarity < 0.86:
+            continue
+        same_style = bool(row.get("door_layout") and product.get("door_layout") and row.get("door_layout") == product.get("door_layout"))
+        same_doors = bool(row.get("door_count") and product.get("door_count") and row.get("door_count") == product.get("door_count"))
+        score = similarity * 100 + (4 if same_style else 0) + (2 if same_doors else 0)
+        if score > best_score:
+            best = row
+            best_score = score
+    if not best:
+        return False
+    image_url = best.get("product_image_url")
+    if not is_displayable_image_url(client, image_url, timeout=3.0):
+        return False
+    candidate = {
+        "image_url": image_url,
+        "page_url": best.get("product_image_source_url") or "",
+        "source_name": "Same Brand Similar Model Image",
+        "title": f"{best.get('brand')} {best.get('equipment_model')} representative product image",
+        "representative_image": True,
+    }
+    saved = save_fast_candidate(client, product, candidate, score_override=max(MIN_PROMOTE_SCORE, min(92, best_score)))
+    return promote_best_image(client, product, [saved])
 
 
 def search_bing_images_strict(client, product: dict, limit: int = 8) -> list[dict]:
@@ -197,6 +265,9 @@ def search_representative_bing_images(client, product: dict, limit: int = 8) -> 
 
 
 def quick_promote_product_image(client, product: dict, limit: int = 6) -> bool:
+    if promote_sibling_model_image(client, product):
+        return True
+
     saved = get_existing_candidates(client, product["id"], limit=limit)
     if promote_best_image(client, product, saved):
         return True
