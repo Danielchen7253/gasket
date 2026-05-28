@@ -290,6 +290,21 @@ def find_product(client: httpx.Client, brand: str, model: str) -> dict | None:
         f"&equipment_model=ilike.*{variant.replace('*', '')}*" for variant in variants
     ]
     wanted = normalize_model(model)
+
+    def best_match(rows: list[dict]) -> dict | None:
+        exact = [row for row in rows if normalize_model(row.get("equipment_model", "")) == wanted]
+        candidates = exact or rows
+        if not candidates:
+            return None
+        return max(
+            candidates,
+            key=lambda row: (
+                int(bool(row.get("product_image_url"))),
+                int(bool(row.get("door_positions")) or bool(row.get("door_count"))),
+                int(row.get("id") or 0),
+            ),
+        )
+
     for extra_filter in filters:
         endpoint = f"{SUPABASE_URL}/rest/v1/refrigerator_products?select=*{extra_filter}&limit=20"
         response = client.get(endpoint, headers=supabase_headers())
@@ -299,8 +314,30 @@ def find_product(client: httpx.Client, brand: str, model: str) -> dict | None:
             continue
         for row in rows:
             if normalize_model(row.get("equipment_model", "")) == wanted:
+                if brand_q:
+                    sibling_endpoint = (
+                        f"{SUPABASE_URL}/rest/v1/refrigerator_products?select=*"
+                        f"&brand=ilike.*{brand_q}*&limit=300"
+                    )
+                    sibling_response = client.get(sibling_endpoint, headers=supabase_headers())
+                    sibling_response.raise_for_status()
+                    sibling = best_match(sibling_response.json())
+                    if sibling and normalize_model(sibling.get("equipment_model", "")) == wanted:
+                        return sibling
                 return row
-        return rows[0]
+        return best_match(rows) or rows[0]
+
+    if brand_q and wanted:
+        endpoint = (
+            f"{SUPABASE_URL}/rest/v1/refrigerator_products?select=*"
+            f"&brand=ilike.*{brand_q}*&limit=300"
+        )
+        response = client.get(endpoint, headers=supabase_headers())
+        response.raise_for_status()
+        rows = response.json()
+        exact = best_match(rows)
+        if exact and normalize_model(exact.get("equipment_model", "")) == wanted:
+            return exact
 
     digits = re.sub(r"\D", "", wanted)
     if digits:

@@ -332,13 +332,20 @@ main{max-width:none;padding:0}
                 if updated_rows:
                     product = updated_rows[0]
             try:
-                from instant_enrichment import start_instant_enrichment, upsert_known_product_from_nameplate, wait_for_core_result
+                from instant_enrichment import run_quick_image_task, start_instant_enrichment, upsert_known_product_from_nameplate, wait_for_core_result
 
                 product = upsert_known_product_from_nameplate(client, brand, model, nameplate_data, status="customer_confirmed")
                 start_instant_enrichment(product["id"], nameplate_data)
+                quick_product = run_quick_image_task(product["id"])
+                if quick_product:
+                    product = quick_product
                 waited = wait_for_core_result(product["id"], max_seconds=10)
                 if waited.get("product"):
                     product = waited["product"]
+                if not product.get("product_image_url") and quick_product:
+                    product["product_image_url"] = quick_product.get("product_image_url")
+                    product["product_image_source_url"] = quick_product.get("product_image_source_url")
+                    product["product_image_confidence"] = quick_product.get("product_image_confidence")
             except Exception as exc:
                 print(f"instant enrichment start failed for {brand} {model}: {exc}")
             request = g["create_request"](client, customer, upload_url, brand, model, product, nameplate_data)

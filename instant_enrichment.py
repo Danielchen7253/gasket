@@ -42,6 +42,22 @@ def compact(value: Any) -> str:
     return str(value or "").strip()
 
 
+def best_product_match(rows: list[dict[str, Any]], wanted_model: str) -> dict[str, Any] | None:
+    wanted = normalize_model(wanted_model)
+    exact = [row for row in rows if normalize_model(row.get("equipment_model", "")) == wanted]
+    candidates = exact or rows
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda row: (
+            int(bool(row.get("product_image_url"))),
+            int(bool(row.get("door_positions")) or bool(row.get("door_count"))),
+            int(row.get("id") or 0),
+        ),
+    )
+
+
 def patch_product(client: httpx.Client, product_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     clean = {key: value for key, value in payload.items() if value not in (None, "")}
     if not clean:
@@ -80,7 +96,36 @@ def find_product(client: httpx.Client, brand: str, model: str) -> dict[str, Any]
             response.raise_for_status()
             rows = response.json()
             if rows:
-                return rows[0]
+                brand_query = (brand or "").strip()
+                wanted = normalize_model(model)
+                if wanted and brand_query:
+                    sibling_response = client.get(
+                        f"{SUPABASE_URL}/rest/v1/refrigerator_products",
+                        params={"select": "*", "brand": f"ilike.*{brand_query}*", "limit": "300"},
+                        headers=supabase_headers(),
+                    )
+                    sibling_response.raise_for_status()
+                    sibling = best_product_match(sibling_response.json(), model)
+                    if sibling and normalize_model(sibling.get("equipment_model", "")) == wanted:
+                        return sibling
+                return best_product_match(rows, model) or rows[0]
+    wanted = normalize_model(model)
+    brand_query = (brand or "").strip()
+    if wanted and brand_query:
+        response = client.get(
+            f"{SUPABASE_URL}/rest/v1/refrigerator_products",
+            params={
+                "select": "*",
+                "brand": f"ilike.*{brand_query}*",
+                "limit": "300",
+            },
+            headers=supabase_headers(),
+        )
+        response.raise_for_status()
+        rows = response.json()
+        exact = best_product_match(rows, model)
+        if exact and normalize_model(exact.get("equipment_model", "")) == wanted:
+            return exact
     return None
 
 
@@ -448,6 +493,44 @@ def run_image_task(product_id: int, nameplate_data: dict[str, Any] | None = None
         except Exception as exc:
             mark_task(client, product_id, "product_image", "retry_later", str(exc))
             print(f"instant image enrichment failed for product {product_id}: {exc}", flush=True)
+
+
+def run_quick_image_task(product_id: int) -> dict[str, Any] | None:
+    """Fast foreground image fill for the product the customer is viewing now."""
+    with httpx.Client(timeout=45) as client:
+        product = get_product(client, product_id)
+        if not product:
+            return None
+        if is_displayable_image_url(client, product.get("product_image_url"), timeout=3.0):
+            return product
+        try:
+            mark_task(client, product_id, "product_image", "running")
+            if product.get("product_image_url"):
+                patch_product(
+                    client,
+                    product_id,
+                    {
+                        "product_image_url": None,
+                        "product_image_source_url": None,
+                        "product_image_confidence": None,
+                        "updated_at": now_iso(),
+                    },
+                )
+                product = get_product(client, product_id) or product
+            ok = quick_promote_product_image(client, product, limit=8)
+            refreshed = get_product(client, product_id)
+            mark_task(
+                client,
+                product_id,
+                "product_image",
+                "completed" if ok else "retry_later",
+                None if ok else "No reliable quick product image found.",
+            )
+            return refreshed or product
+        except Exception as exc:
+            mark_task(client, product_id, "product_image", "retry_later", str(exc))
+            print(f"quick image enrichment failed for product {product_id}: {exc}", flush=True)
+            return get_product(client, product_id)
 
 
 def start_instant_enrichment(product_id: int, nameplate_data: dict[str, Any] | None = None) -> None:
