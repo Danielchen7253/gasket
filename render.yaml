@@ -81,7 +81,7 @@ services:
       - key: COMPREHENSIVE_BACKFILL_LIMIT
         value: "25"
       - key: COMPREHENSIVE_BACKFILL_MAX_AI
-        value: "8"
+        value: "0"
       - key: COMPREHENSIVE_BACKFILL_SLEEP_SECONDS
         value: "1.5"
   - type: cron

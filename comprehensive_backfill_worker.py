@@ -259,7 +259,7 @@ def get_product_by_id(client: httpx.Client, product_id: int) -> dict[str, Any] |
 
 def main() -> None:
     limit = int(os.getenv("COMPREHENSIVE_BACKFILL_LIMIT", "25"))
-    max_ai = int(os.getenv("COMPREHENSIVE_BACKFILL_MAX_AI", "8"))
+    max_ai = int(os.getenv("COMPREHENSIVE_BACKFILL_MAX_AI", "0"))
     sleep_seconds = float(os.getenv("COMPREHENSIVE_BACKFILL_SLEEP_SECONDS", "1.5"))
     ai_budget = {"remaining": max_ai}
 
