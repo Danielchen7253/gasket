@@ -16,7 +16,10 @@ from product_image_search_crawler import (
     normalized,
     promote_best_image,
     score_candidate,
+    search_bing_api_images,
+    search_brave_images,
     search_google_cse,
+    search_direct_product_pages,
     search_public_web_images,
     supabase_headers,
 )
@@ -276,6 +279,12 @@ def quick_promote_product_image(client, product: dict, limit: int = 6) -> bool:
         return [row for row in rows if score_candidate(product, row) >= MIN_PROMOTE_SCORE]
 
     raw_candidates = strong(search_google_cse(client, product))[:limit]
+    if not raw_candidates:
+        raw_candidates = strong(search_brave_images(client, product))[:limit]
+    if not raw_candidates:
+        raw_candidates = strong(search_bing_api_images(client, product))[:limit]
+    if not raw_candidates:
+        raw_candidates = strong(search_direct_product_pages(client, product))[:limit]
     if not raw_candidates:
         raw_candidates = strong(search_bing_images_strict(client, product, limit=limit))[:limit]
     if not raw_candidates:

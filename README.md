@@ -22,6 +22,10 @@ Required environment variables:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `GOOGLE_API_KEY` optional for image search
 - `GOOGLE_CSE_ID` optional for image search
+- `SERPAPI_KEY` optional Google Images fallback
+- `BRAVE_SEARCH_API_KEY` optional Brave web/image search fallback
+- `BING_SEARCH_API_KEY` optional Bing web/image search fallback
+- `BING_SEARCH_ENDPOINT` optional Bing endpoint, defaults to `https://api.bing.microsoft.com/v7.0`
 - `OPENAI_API_KEY` fallback OpenAI key
 - `OPENAI_NAMEPLATE_API_KEY` optional dedicated key for nameplate image reading
 - `OPENAI_RESEARCH_API_KEY` optional dedicated key for product/gasket research

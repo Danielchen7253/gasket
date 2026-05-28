@@ -4,7 +4,7 @@ import re
 import struct
 from html import unescape
 from pathlib import Path
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 import httpx
@@ -21,6 +21,9 @@ SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 GOOGLE_CSE_KEY = os.getenv("GOOGLE_CSE_KEY") or os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_CX = os.getenv("GOOGLE_CSE_CX") or os.getenv("GOOGLE_CSE_ID")
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
+BING_SEARCH_API_KEY = os.getenv("BING_SEARCH_API_KEY")
+BING_SEARCH_ENDPOINT = (os.getenv("BING_SEARCH_ENDPOINT") or "https://api.bing.microsoft.com/v7.0").rstrip("/")
 
 PRODUCT_TABLE = "refrigerator_products"
 CANDIDATE_TABLE = "product_image_candidates"
@@ -217,8 +220,11 @@ def score_candidate(product: dict, candidate: dict) -> float:
     if candidate.get("source_name") in {
         "SerpApi Google Images",
         "Google Custom Search",
+        "Brave Image Search",
+        "Bing Image Search API",
         "Bing Images Public Search",
         "Public Product Page",
+        "Public Product Search Page",
     }:
         score += 5
     return max(0, min(100, score))
@@ -325,6 +331,116 @@ def search_serpapi(client: httpx.Client, product: dict) -> list[dict]:
             }
         )
     return [row for row in rows if row.get("image_url")]
+
+
+def search_brave_images(client: httpx.Client, product: dict) -> list[dict]:
+    if not BRAVE_SEARCH_API_KEY:
+        return []
+    query = f'{product["brand"]} {product["equipment_model"]} refrigerator product image'
+    try:
+        response = client.get(
+            "https://api.search.brave.com/res/v1/images/search",
+            params={"q": query, "count": 10, "safesearch": "strict"},
+            headers={"Accept": "application/json", "X-Subscription-Token": BRAVE_SEARCH_API_KEY},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        print(f"Brave image search skipped for {product['brand']} {product['equipment_model']}: {exc.__class__.__name__}")
+        return []
+    rows = []
+    for item in response.json().get("results", [])[:10]:
+        image = item.get("properties") or {}
+        thumbnail = item.get("thumbnail") or {}
+        rows.append(
+            {
+                "image_url": image.get("url") or thumbnail.get("src") or item.get("url"),
+                "page_url": item.get("url"),
+                "source_name": "Brave Image Search",
+                "title": item.get("title"),
+                "image_width": image.get("width"),
+                "image_height": image.get("height"),
+            }
+        )
+    return [row for row in rows if row.get("image_url")]
+
+
+def search_brave_pages(client: httpx.Client, product: dict) -> list[dict]:
+    if not BRAVE_SEARCH_API_KEY:
+        return []
+    query = f'{product["brand"]} {product["equipment_model"]} refrigerator product'
+    try:
+        response = client.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            params={"q": query, "count": 10, "safesearch": "strict"},
+            headers={"Accept": "application/json", "X-Subscription-Token": BRAVE_SEARCH_API_KEY},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        print(f"Brave web search skipped for {product['brand']} {product['equipment_model']}: {exc.__class__.__name__}")
+        return []
+    rows = []
+    for item in (response.json().get("web") or {}).get("results", [])[:10]:
+        page_url = item.get("url")
+        if not page_url:
+            continue
+        rows.append({"page_url": page_url, "source_name": "Brave Web Result Page", "title": item.get("title")})
+    return rows
+
+
+def search_bing_api_images(client: httpx.Client, product: dict) -> list[dict]:
+    if not BING_SEARCH_API_KEY:
+        return []
+    query = f'{product["brand"]} {product["equipment_model"]} refrigerator product image'
+    try:
+        response = client.get(
+            f"{BING_SEARCH_ENDPOINT}/images/search",
+            params={"q": query, "count": 10, "safeSearch": "Strict", "mkt": "en-US"},
+            headers={"Ocp-Apim-Subscription-Key": BING_SEARCH_API_KEY},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        print(f"Bing Image Search API skipped for {product['brand']} {product['equipment_model']}: {exc.__class__.__name__}")
+        return []
+    rows = []
+    for item in response.json().get("value", [])[:10]:
+        rows.append(
+            {
+                "image_url": item.get("contentUrl") or item.get("thumbnailUrl"),
+                "page_url": item.get("hostPageUrl"),
+                "source_name": "Bing Image Search API",
+                "title": item.get("name"),
+                "image_width": item.get("width"),
+                "image_height": item.get("height"),
+            }
+        )
+    return [row for row in rows if row.get("image_url")]
+
+
+def search_bing_api_pages(client: httpx.Client, product: dict) -> list[dict]:
+    if not BING_SEARCH_API_KEY:
+        return []
+    query = f'{product["brand"]} {product["equipment_model"]} refrigerator product'
+    try:
+        response = client.get(
+            f"{BING_SEARCH_ENDPOINT}/search",
+            params={"q": query, "count": 10, "safeSearch": "Strict", "mkt": "en-US"},
+            headers={"Ocp-Apim-Subscription-Key": BING_SEARCH_API_KEY},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        print(f"Bing Web Search API skipped for {product['brand']} {product['equipment_model']}: {exc.__class__.__name__}")
+        return []
+    rows = []
+    for item in (response.json().get("webPages") or {}).get("value", [])[:10]:
+        page_url = item.get("url")
+        if not page_url:
+            continue
+        rows.append({"page_url": page_url, "source_name": "Bing Web Result Page", "title": item.get("name")})
+    return rows
 
 
 def search_google_cse(client: httpx.Client, product: dict) -> list[dict]:
@@ -444,6 +560,73 @@ def search_duckduckgo_pages_wide(client: httpx.Client, product: dict) -> list[di
     return rows
 
 
+def first_srcset_url(value: str | None) -> str:
+    if not value:
+        return ""
+    first = value.split(",", 1)[0].strip()
+    return first.split(" ", 1)[0].strip()
+
+
+def normalize_page_image_url(base_url: str, src: str | None) -> str:
+    if not src:
+        return ""
+    src = unescape(src.strip())
+    if not src or src.startswith("data:"):
+        return ""
+    if src.startswith("//"):
+        return "https:" + src
+    return urljoin(base_url, src)
+
+
+def image_urls_from_text(text: str) -> list[str]:
+    patterns = [
+        r'https?:\\?/\\?/[^"\\\s<>]+?(?:\.(?:jpg|jpeg|png|webp|avif)|/img/|/images?/)[^"\\\s<>]*',
+        r'"(?:image|imageUrl|image_url|thumbnail|thumbnailUrl|primaryImage|productImage)"\s*:\s*"([^"]+)"',
+    ]
+    rows = []
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            value = match.group(1) if match.groups() else match.group(0)
+            value = value.replace("\\/", "/")
+            if value.startswith("http"):
+                rows.append(value)
+    return rows
+
+
+def direct_product_search_pages(product: dict) -> list[dict]:
+    brand = product["brand"]
+    model = product["equipment_model"]
+    query = quote_plus(f"{brand} {model}")
+    model_query = quote_plus(model)
+    return [
+        {
+            "page_url": f"https://www.searspartsdirect.com/search?q={query}",
+            "source_name": "Direct Sears Parts Search",
+            "title": f"{brand} {model} refrigerator product search",
+        },
+        {
+            "page_url": f"https://www.repairclinic.com/Shop-For-Parts?query={query}",
+            "source_name": "Direct RepairClinic Search",
+            "title": f"{brand} {model} refrigerator product search",
+        },
+        {
+            "page_url": f"https://www.appliancepartspros.com/search.aspx?q={model_query}",
+            "source_name": "Direct AppliancePartsPros Search",
+            "title": f"{brand} {model} refrigerator product search",
+        },
+        {
+            "page_url": f"https://www.easyapplianceparts.com/Search.aspx?SearchTerm={model_query}",
+            "source_name": "Direct EasyApplianceParts Search",
+            "title": f"{brand} {model} refrigerator product search",
+        },
+        {
+            "page_url": f"https://www.partselect.com/Search?searchterm={model_query}",
+            "source_name": "Direct PartSelect Search",
+            "title": f"{brand} {model} refrigerator product search",
+        },
+    ]
+
+
 def extract_page_images(client: httpx.Client, page: dict) -> list[dict]:
     page_url = page.get("page_url")
     if not page_url:
@@ -471,18 +654,23 @@ def extract_page_images(client: httpx.Client, page: dict) -> list[dict]:
             image_urls.append(tag[attr])
 
     for img in soup.select("img")[:20]:
-        src = img.get("src") or img.get("data-src") or img.get("data-original")
+        src = (
+            img.get("src")
+            or img.get("data-src")
+            or img.get("data-original")
+            or img.get("data-lazy-src")
+            or first_srcset_url(img.get("srcset") or img.get("data-srcset"))
+        )
         alt = img.get("alt") or ""
+        src = normalize_page_image_url(str(response.url), src)
         if not src:
             continue
-        if src.startswith("//"):
-            src = "https:" + src
-        elif src.startswith("/"):
-            parsed = urlparse(str(response.url))
-            src = f"{parsed.scheme}://{parsed.netloc}{src}"
         if any(token in normalized(src + " " + alt) for token in ["LOGO", "ICON", "SPRITE"]):
             continue
         image_urls.append(src)
+
+    for image_url in image_urls_from_text(response.text)[:40]:
+        image_urls.append(normalize_page_image_url(str(response.url), image_url))
 
     rows = []
     seen = set()
@@ -501,12 +689,30 @@ def extract_page_images(client: httpx.Client, page: dict) -> list[dict]:
     return rows[:5]
 
 
+def search_direct_product_pages(client: httpx.Client, product: dict) -> list[dict]:
+    rows = []
+    for page in direct_product_search_pages(product):
+        rows.extend(extract_page_images(client, page))
+        if len(rows) >= 12:
+            break
+    return rows[:12]
+
+
 def search_public_web_images(client: httpx.Client, product: dict) -> list[dict]:
     rows = []
+    rows.extend(search_brave_images(client, product))
+    rows.extend(search_bing_api_images(client, product))
     rows.extend(search_bing_images(client, product))
     if any(score_candidate(product, row) >= MIN_PROMOTE_SCORE for row in rows):
         return rows[:10]
-    pages = search_duckduckgo_pages(client, product)[:5]
+    rows.extend(search_direct_product_pages(client, product))
+    if any(score_candidate(product, row) >= MIN_PROMOTE_SCORE for row in rows):
+        return rows[:10]
+    pages = search_brave_pages(client, product)[:5]
+    if not pages:
+        pages = search_bing_api_pages(client, product)[:5]
+    if not pages:
+        pages = search_duckduckgo_pages(client, product)[:5]
     if not pages:
         pages = search_duckduckgo_pages_wide(client, product)[:5]
     for page in pages:
@@ -718,6 +924,8 @@ def main() -> None:
             if not promoted_this and not PROMOTE_EXISTING_ONLY:
                 raw_candidates = []
                 raw_candidates.extend(search_serpapi(client, product))
+                raw_candidates.extend(search_brave_images(client, product))
+                raw_candidates.extend(search_bing_api_images(client, product))
                 raw_candidates.extend(search_google_cse(client, product))
                 if not raw_candidates:
                     raw_candidates.extend(search_public_web_images(client, product))
