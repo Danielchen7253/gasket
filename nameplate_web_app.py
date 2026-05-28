@@ -58,9 +58,20 @@ def customer_gasket_size(item: dict) -> str:
     if width not in (None, "") and height not in (None, ""):
         return f'{float(width):g}" x {float(height):g}"'
     dimensions = (item.get("dimensions_text") or "").strip()
-    blocked = ["not publicly", "official", "partsdr", "partselect", "confirm", "oem"]
-    if dimensions and not any(token in dimensions.lower() for token in blocked):
-        return dimensions
+    if dimensions:
+        match = re.search(
+            r'(\d+(?:\.\d+)?(?:-\d+/\d+|/\d+)?|\d+\s+\d+/\d+)\s*(?:"|in|inch|inches)?\s*[x×]\s*(\d+(?:\.\d+)?(?:-\d+/\d+|/\d+)?|\d+\s+\d+/\d+)\s*(?:"|in|inch|inches)?',
+            dimensions,
+            re.IGNORECASE,
+        )
+        if match:
+            return f'{match.group(1).strip()}" x {match.group(2).strip()}"'
+        blocked = ["not publicly", "official", "partsdr", "partselect", "confirm", "oem"]
+        if not any(token in dimensions.lower() for token in blocked):
+            return dimensions
+    perimeter = item.get("perimeter_in")
+    if perimeter not in (None, ""):
+        return f'Perimeter {float(perimeter):g}"'
     return "Size to confirm"
 
 
