@@ -186,16 +186,25 @@ main{max-width:none;padding:0}
             else f"<div class='photo loading'><span data-loading-label='{product_loading}'>{product_loading} 00:00</span></div>"
         )
         plate_html = f"<img class='plate' src='{esc(upload_url)}' alt='Uploaded nameplate'>" if upload_url else "<div class='plate muted'>Nameplate photo</div>"
-        source_summary = product.get("data_source_summary") or ""
         door_positions = product.get("door_positions") if isinstance(product.get("door_positions"), list) else []
         door_text = ", ".join([item.get("label") or item.get("key") or "" for item in door_positions if item]) or "Loading"
-        confidence = product.get("data_confidence") or product.get("door_layout_confidence") or ""
         product_facts = f"""
 <div class="facts">
 <div>Product type</div><div><strong>{esc(product.get('product_type') or 'Loading')}</strong></div>
 <div>Door layout</div><div>{esc(door_text)}</div>
 <div>Status</div><div>{esc(product.get('lifecycle_status') or 'unknown')}</div>
 </div>"""
+
+        def gasket_size(item):
+            width = item.get("width_in")
+            height = item.get("height_in")
+            if width not in (None, "") and height not in (None, ""):
+                return f'{float(width):g}" x {float(height):g}"'
+            dimensions = (item.get("dimensions_text") or "").strip()
+            blocked = ["not publicly", "official", "partsdr", "partselect", "confirm", "oem"]
+            if dimensions and not any(token in dimensions.lower() for token in blocked):
+                return dimensions
+            return "Size to confirm"
 
         rows = []
         if pending_new and not quote_items:
@@ -207,19 +216,8 @@ main{max-width:none;padding:0}
             price = float(item.get("final_price_usd") or 0)
             image = item.get("gasket_image_url")
             image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<div class='muted'>Gasket</div>"
-            dims = item.get("dimensions_text") or f"{item.get('width_in') or '-'} x {item.get('height_in') or '-'} in"
-            size_status = item.get("size_status")
-            size_note = f" ({esc(size_status)})" if size_status else ""
-            part_number = item.get("part_number") or item.get("universal_part_number")
-            part_line = f"<br>OEM: <strong>{esc(part_number)}</strong>" if part_number else ""
-            color_line = f"<br>Color: {esc(item.get('gasket_color'))}" if item.get("gasket_color") else ""
-            install_line = f"<br>Type: {esc(item.get('gasket_install_type'))}" if item.get("gasket_install_type") else ""
-            confirm_line = ""
-            if item.get("needs_customer_confirmation") is True or item.get("needs_customer_confirmation") == "true":
-                confirm_line = f"<br><span class='muted'>{esc(item.get('customer_confirmation_note') or 'Confirm before production.')}</span>"
-            confidence_line = f"<br>Confidence: {esc(item.get('confidence_score'))}%" if item.get("confidence_score") is not None else ""
-            evidence = f"<br><span class='muted'>{esc(item.get('evidence_summary'))}</span>" if item.get("evidence_summary") else ""
-            rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)}</strong><p>{esc(dims)}{size_note}{part_line}{color_line}{install_line}{confidence_line}{confirm_line}{evidence}</p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div><div></div></label>""")
+            dims = gasket_size(item)
+            rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)}</strong><p>{esc(dims)}</p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div><div></div></label>""")
 
         if not quote_items and not pending_new:
             rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
