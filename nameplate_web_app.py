@@ -27,6 +27,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_NAMEPLATE_API_KEY = os.getenv("OPENAI_NAMEPLATE_API_KEY", OPENAI_API_KEY).strip()
 OPENAI_NAMEPLATE_MODEL = os.getenv("OPENAI_NAMEPLATE_MODEL", "gpt-4.1-mini")
 SHOPIFY_STORE_DOMAIN = os.getenv("SHOPIFY_STORE_DOMAIN", "").strip()
+SHOPIFY_STOREFRONT_ACCESS_TOKEN = os.getenv("SHOPIFY_STOREFRONT_ACCESS_TOKEN", "").strip()
+SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2024-10").strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
 ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", ADMIN_PASSWORD or SUPABASE_SERVICE_ROLE_KEY).strip()
 ADMIN_COOKIE_NAME = "gasket_admin_session"
@@ -73,6 +75,103 @@ def customer_gasket_size(item: dict) -> str:
     if perimeter not in (None, ""):
         return f'Perimeter {float(perimeter):g}"'
     return "Size to confirm"
+
+
+def shopify_variant_gid(value: str | None) -> str | None:
+    value = (value or "").strip()
+    if not value:
+        return None
+    if value.startswith("gid://shopify/ProductVariant/"):
+        return value
+    if value.isdigit():
+        return f"gid://shopify/ProductVariant/{value}"
+    return value
+
+
+def shopify_variant_for_quote_item(item: dict) -> str | None:
+    price = float(item.get("final_price_usd") or item.get("base_price_usd") or 0)
+    perimeter = float(item.get("perimeter_in") or 0)
+    if price <= 45.01 or (perimeter and perimeter < 98):
+        keys = ["SHOPIFY_VARIANT_GASKET_45", "SHOPIFY_VARIANT_UNDER_98"]
+    elif price <= 68.01 or (perimeter and perimeter < 117):
+        keys = ["SHOPIFY_VARIANT_GASKET_68", "SHOPIFY_VARIANT_UNDER_117"]
+    elif price <= 90.01 or (perimeter and perimeter < 146):
+        keys = ["SHOPIFY_VARIANT_GASKET_90", "SHOPIFY_VARIANT_UNDER_146"]
+    else:
+        keys = ["SHOPIFY_VARIANT_GASKET_120", "SHOPIFY_VARIANT_UNDER_190"]
+    for key in keys:
+        variant = shopify_variant_gid(os.getenv(key))
+        if variant:
+            return variant
+    return None
+
+
+def shopify_ready() -> bool:
+    return bool(SHOPIFY_STORE_DOMAIN and SHOPIFY_STOREFRONT_ACCESS_TOKEN)
+
+
+def create_shopify_cart(client: httpx.Client, product: dict, quote_items: list[dict]) -> str:
+    if not shopify_ready():
+        raise ValueError("Shopify is not configured.")
+    lines = []
+    for item in quote_items:
+        variant_id = shopify_variant_for_quote_item(item)
+        if not variant_id:
+            raise ValueError(f"Missing Shopify variant for {money(item.get('final_price_usd'))} gasket.")
+        lines.append(
+            {
+                "merchandiseId": variant_id,
+                "quantity": 1,
+                "attributes": [
+                    {"key": "Brand", "value": str(product.get("brand") or "")},
+                    {"key": "Model", "value": str(product.get("equipment_model") or "")},
+                    {"key": "Door position", "value": str(item.get("door_position_display") or item.get("door_position") or "")},
+                    {"key": "Size", "value": customer_gasket_size(item)},
+                    {"key": "Quoted price", "value": money(item.get("final_price_usd"))},
+                    {"key": "Product record ID", "value": str(product.get("id") or "")},
+                    {"key": "Door key", "value": str(item.get("door_position") or "")},
+                ],
+            }
+        )
+    mutation = """
+    mutation CartCreate($input: CartInput!) {
+      cartCreate(input: $input) {
+        cart { checkoutUrl }
+        userErrors { field message }
+      }
+    }
+    """
+    endpoint = f"https://{SHOPIFY_STORE_DOMAIN}/api/{SHOPIFY_API_VERSION}/graphql.json"
+    response = client.post(
+        endpoint,
+        headers={
+            "Content-Type": "application/json",
+            "X-Shopify-Storefront-Access-Token": SHOPIFY_STOREFRONT_ACCESS_TOKEN,
+        },
+        json={
+            "query": mutation,
+            "variables": {
+                "input": {
+                    "lines": lines,
+                    "attributes": [
+                        {"key": "Source", "value": "Gasket nameplate match"},
+                        {"key": "Product record ID", "value": str(product.get("id") or "")},
+                        {"key": "Brand", "value": str(product.get("brand") or "")},
+                        {"key": "Model", "value": str(product.get("equipment_model") or "")},
+                    ],
+                }
+            },
+        },
+    )
+    response.raise_for_status()
+    payload = response.json()
+    errors = payload.get("errors") or payload.get("data", {}).get("cartCreate", {}).get("userErrors") or []
+    if errors:
+        raise ValueError(json.dumps(errors, ensure_ascii=False))
+    checkout_url = payload.get("data", {}).get("cartCreate", {}).get("cart", {}).get("checkoutUrl")
+    if not checkout_url:
+        raise ValueError("Shopify did not return a checkout URL.")
+    return checkout_url
 
 
 def admin_signature(expires: int) -> str:
@@ -509,6 +608,46 @@ def get_quote_items(client: httpx.Client, product_id: int) -> list[dict]:
     return [row for row in response.json() if is_customer_visible_gasket(row)]
 
 
+def selected_quote_items(all_items: list[dict], selected_positions: list[str]) -> list[dict]:
+    selected = {value for value in selected_positions if value}
+    if not selected:
+        return []
+    return [item for item in all_items if str(item.get("door_position") or "") in selected]
+
+
+def render_checkout_error(message: str, product_id: int | None = None) -> bytes:
+    back = f"/preview?product_id={product_id}" if product_id else "/"
+    return page(
+        "Checkout Not Ready",
+        f"""<section><h2>Checkout is not ready</h2><p class="muted">{esc(message)}</p><p><a class="button" href="{esc(back)}">Back to quote</a></p></section>""",
+    )
+
+
+def handle_checkout_post(handler, raw_body: bytes) -> None:
+    fields = parse_qs(raw_body.decode("utf-8", errors="replace"))
+    product_id = int((fields.get("product_id") or ["0"])[0] or "0")
+    selected_positions = fields.get("door_position") or []
+    if not product_id:
+        handler.send_html(render_checkout_error("Missing product record. Please start the match again."), HTTPStatus.BAD_REQUEST)
+        return
+    with httpx.Client(timeout=30) as client:
+        product = get_product(client, product_id)
+        if not product:
+            handler.send_html(render_checkout_error("Product record was not found. Please start the match again.", product_id), HTTPStatus.NOT_FOUND)
+            return
+        quote_items = get_quote_items(client, product_id)
+        chosen = selected_quote_items(quote_items, selected_positions)
+        if not chosen:
+            handler.send_html(render_checkout_error("Please select at least one gasket before checkout.", product_id), HTTPStatus.BAD_REQUEST)
+            return
+        try:
+            checkout_url = create_shopify_cart(client, product, chosen)
+        except Exception as exc:
+            handler.send_html(render_checkout_error(str(exc), product_id), HTTPStatus.BAD_REQUEST)
+            return
+    handler.redirect(checkout_url)
+
+
 def get_evidence_package(client: httpx.Client, product_id: int) -> dict | None:
     response = client.get(
         f"{SUPABASE_URL}/rest/v1/product_evidence_packages",
@@ -827,7 +966,7 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
     return page("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-<section><h2>Gasket quote</h2>{summary_html}<div>{''.join(rows) if rows else '<p class="muted">No quote items yet.</p>'}</div></section>""")
+<section><h2>Gasket quote</h2><form method="post" action="/checkout"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{''.join(rows) if rows else '<p class="muted">No quote items yet.</p>'}</div><p><button type="submit">Checkout selected gaskets</button></p></form></section>""")
 
 
 
@@ -870,7 +1009,7 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
     return page("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-<section><h2>Gasket quote</h2>{summary_html}<div>{rows_html}</div></section>""")
+<section><h2>Gasket quote</h2><form method="post" action="/checkout"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><p><button type="submit">Checkout selected gaskets</button></p></form></section>""")
 
 
 def render_evidence_package(package: dict) -> str:
@@ -1112,6 +1251,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.redirect("/ADMIN", cookie)
                 return
             self.send_html(render_admin_login("Wrong password."), HTTPStatus.UNAUTHORIZED)
+            return
+        if path == "/checkout":
+            handle_checkout_post(self, self.rfile.read(int(self.headers.get("Content-Length", "0"))))
             return
         if path not in {"/read-nameplate", "/match"}:
             self.send_html(page("Page Not Found", "<section><h2>Page not found</h2><p class='muted'>Start from the upload page and match a refrigerator nameplate.</p><p><a class='button' href='/'>Go to upload</a></p></section>"), HTTPStatus.NOT_FOUND)

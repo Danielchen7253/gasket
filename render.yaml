@@ -14,6 +14,18 @@ services:
         sync: false
       - key: GOOGLE_CSE_ID
         sync: false
+      - key: SHOPIFY_STORE_DOMAIN
+        sync: false
+      - key: SHOPIFY_STOREFRONT_ACCESS_TOKEN
+        sync: false
+      - key: SHOPIFY_VARIANT_GASKET_45
+        sync: false
+      - key: SHOPIFY_VARIANT_GASKET_68
+        sync: false
+      - key: SHOPIFY_VARIANT_GASKET_90
+        sync: false
+      - key: SHOPIFY_VARIANT_GASKET_120
+        sync: false
   - type: cron
     name: gasket-data-pipeline
     runtime: python

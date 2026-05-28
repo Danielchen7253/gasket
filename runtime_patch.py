@@ -239,7 +239,7 @@ main{max-width:none;padding:0}
         return g["page"]("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div>{product_facts}</section>
-<section><h2>Gasket quote</h2>{summary_html}<div>{rows_html}</div></section>""")
+<section><h2>Gasket quote</h2><form method="post" action="/checkout"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><p><button type="submit">Checkout selected gaskets</button></p></form></section>""")
 
     def patched_do_POST(self):
         path = g["urlparse"](self.path).path
@@ -253,6 +253,9 @@ main{max-width:none;padding:0}
                 self.redirect("/ADMIN", cookie)
                 return
             self.send_html(g["render_admin_login"]("Wrong password."), HTTPStatus.UNAUTHORIZED)
+            return
+        if path == "/checkout":
+            g["handle_checkout_post"](self, self.rfile.read(int(self.headers.get("Content-Length", "0"))))
             return
         if path not in {"/read-nameplate", "/match"}:
             self.send_error(HTTPStatus.NOT_FOUND)
