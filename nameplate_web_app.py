@@ -52,6 +52,18 @@ def money(value) -> str:
     return "TBD" if value in (None, "") else f"${float(value):,.2f}"
 
 
+def customer_gasket_size(item: dict) -> str:
+    width = item.get("width_in")
+    height = item.get("height_in")
+    if width not in (None, "") and height not in (None, ""):
+        return f'{float(width):g}" x {float(height):g}"'
+    dimensions = (item.get("dimensions_text") or "").strip()
+    blocked = ["not publicly", "official", "partsdr", "partselect", "confirm", "oem"]
+    if dimensions and not any(token in dimensions.lower() for token in blocked):
+        return dimensions
+    return "Size to confirm"
+
+
 def admin_signature(expires: int) -> str:
     secret = ADMIN_SESSION_SECRET.encode("utf-8")
     return hmac.new(secret, str(expires).encode("utf-8"), hashlib.sha256).hexdigest()
@@ -798,10 +810,8 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
         checked = "checked"
         image = item.get("gasket_image_url")
         image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<div class='muted'>No gasket image</div>"
-        dims = item.get("dimensions_text") or f"{item.get('width_in') or '-'} x {item.get('height_in') or '-'} in"
-        part_number = item.get("part_number") or item.get("universal_part_number")
-        part_html = f"<div><small class='muted'>Part</small><br><strong>{esc(part_number)}</strong></div>" if part_number else "<div></div>"
-        rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{line_price}" {checked}>{image_html}<div><strong>{esc(door_label)} Gasket</strong><p>{esc(dims)}<br>Perimeter: {esc(item.get('perimeter_in') or 'TBD')} in<br>Source: {esc(item.get('source_name'))}</p></div><div class="price"><strong>{money(line_price)}</strong><small>each selected door</small></div>{part_html}</label>""")
+        dims = customer_gasket_size(item)
+        rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{line_price}" {checked}>{image_html}<div><strong>{esc(door_label)} Gasket</strong><p>{esc(dims)}</p></div><div class="price"><strong>{money(line_price)}</strong><small>each selected door</small></div><div></div></label>""")
     summary_html = "" if pending_new_product else f"""<div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
     return page("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
@@ -841,12 +851,8 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
         line_price = price
         image = item.get("gasket_image_url")
         image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<div class='muted'>No gasket image</div>"
-        dims = item.get("dimensions_text") or f"{item.get('width_in') or '-'} x {item.get('height_in') or '-'} in"
-        perimeter = item.get("perimeter_in")
-        perimeter_html = f"<br>Perimeter: {esc(perimeter)} in" if perimeter not in (None, "") else ""
-        part_number = item.get("part_number") or item.get("universal_part_number")
-        part_html = f"<div><small class='muted'>Part</small><br><strong>{esc(part_number)}</strong></div>" if part_number else "<div></div>"
-        rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{line_price}" checked>{image_html}<div><strong>{esc(door_label)} Gasket</strong><p>{esc(dims)}{perimeter_html}<br>Source: {esc(item.get('source_name'))}</p></div><div class="price"><strong>{money(line_price)}</strong><small>each selected door</small></div>{part_html}</label>""")
+        dims = customer_gasket_size(item)
+        rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{line_price}" checked>{image_html}<div><strong>{esc(door_label)} Gasket</strong><p>{esc(dims)}</p></div><div class="price"><strong>{money(line_price)}</strong><small>each selected door</small></div><div></div></label>""")
 
     summary_html = "" if pending_new_product else f"""<div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
     rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""

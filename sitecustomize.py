@@ -179,6 +179,17 @@ main{max-width:none;padding:0}
         product_html = f"<img class='photo' src='{esc(product_img)}' alt='Refrigerator product image'>" if product_img else f"<div class='photo loading'><span data-loading-label='{product_loading}'>{product_loading} 00:00</span></div>"
         plate_html = f"<img class='plate' src='{esc(upload_url)}' alt='Uploaded nameplate'>" if upload_url else "<div class='plate muted'>Nameplate photo</div>"
 
+        def gasket_size(item):
+            width = item.get("width_in")
+            height = item.get("height_in")
+            if width not in (None, "") and height not in (None, ""):
+                return f'{float(width):g}" x {float(height):g}"'
+            dimensions = (item.get("dimensions_text") or "").strip()
+            blocked = ["not publicly", "official", "partsdr", "partselect", "confirm", "oem"]
+            if dimensions and not any(token in dimensions.lower() for token in blocked):
+                return dimensions
+            return "Size to confirm"
+
         rows = []
         if pending_new and not quote_items:
             rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
@@ -189,12 +200,8 @@ main{max-width:none;padding:0}
             price = float(item.get("final_price_usd") or 0)
             image = item.get("gasket_image_url")
             image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<div class='muted'>No gasket image</div>"
-            dims = item.get("dimensions_text") or f"{item.get('width_in') or '-'} x {item.get('height_in') or '-'} in"
-            perimeter = item.get("perimeter_in")
-            perimeter_html = f"<br>Perimeter: {esc(perimeter)} in" if perimeter not in (None, "") else ""
-            part_number = item.get("part_number") or item.get("universal_part_number")
-            part_html = f"<div><small class='muted'>Part</small><br><strong>{esc(part_number)}</strong></div>" if part_number else "<div></div>"
-            rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)}</strong><p>{esc(dims)}{perimeter_html}<br>Source: {esc(item.get('source_name'))}</p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div>{part_html}</label>""")
+            dims = gasket_size(item)
+            rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)}</strong><p>{esc(dims)}</p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div><div></div></label>""")
 
         if not quote_items and not pending_new:
             rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
