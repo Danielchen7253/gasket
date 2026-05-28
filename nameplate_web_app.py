@@ -255,12 +255,17 @@ def identify_nameplate(image_bytes: bytes, filename: str) -> dict:
             ],
         }],
     }
-    response = httpx.post(
-        "https://api.openai.com/v1/responses",
-        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=60,
-    )
+    response = None
+    for attempt in range(3):
+        response = httpx.post(
+            "https://api.openai.com/v1/responses",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=60,
+        )
+        if response.status_code != 429:
+            break
+        time.sleep(1.5 * (attempt + 1))
     response.raise_for_status()
     data = response.json()
     output_text = data.get("output_text")
@@ -274,6 +279,21 @@ def identify_nameplate(image_bytes: bytes, filename: str) -> dict:
     parsed = extract_json_object(output_text or "")
     parsed.setdefault("raw_text", output_text or "")
     return parsed
+
+
+def fallback_nameplate_data(error: Exception | str, brand: str = "", model: str = "") -> dict:
+    return {
+        "brand": brand or None,
+        "model": model or None,
+        "serial_number": None,
+        "manufacturer": None,
+        "manufacture_date": None,
+        "refrigerant": None,
+        "voltage": None,
+        "raw_text": "",
+        "confidence": 0,
+        "recognition_error": str(error),
+    }
 
 
 def find_product(client: httpx.Client, brand: str, model: str) -> dict | None:
@@ -691,6 +711,13 @@ def render_confirm_nameplate(upload_url: str, customer: dict, nameplate_data: di
     brand = nameplate_data.get("brand") or fallback_brand
     model = nameplate_data.get("model") or fallback_model
     raw_text = nameplate_data.get("raw_text") or ""
+    recognition_notice = ""
+    if nameplate_data.get("recognition_error"):
+        recognition_notice = """
+<div class="model-check-notice">
+<strong>AI reading is temporarily busy.</strong>
+OpenAI is rate-limited right now. The uploaded photo is saved; type the brand and model from the nameplate, then continue matching.
+</div>"""
     model_notice = """
 <div class="model-check-notice">
 <strong>Important: confirm the model number exactly.</strong>
@@ -698,7 +725,7 @@ AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match th
 </div>"""
     return page("Confirm Nameplate", f"""
 <section><h2>Confirm nameplate information</h2>
-<p>Check the uploaded nameplate against the information below. If anything is wrong, edit it before matching the database.</p>
+<p>Check the uploaded nameplate against the information below. If anything is wrong, edit it before matching the database.</p>{recognition_notice}
 <div class="result-grid"><div><h3>Nameplate photo</h3><button class="image-open" type="button" data-image-viewer-src="{esc(upload_url)}"><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></button><p class="muted">Click the nameplate photo to zoom and drag.</p></div>
 <form method="post" action="/match" enctype="multipart/form-data"><h3>Read information</h3>
 <input type="hidden" name="upload_url" value="{esc(upload_url)}">
@@ -1070,8 +1097,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 nameplate_data = identify_nameplate(file_field["data"], file_field["filename"])
             except Exception as exc:
-                self.send_html(render_home(f"Nameplate recognition failed: {exc}"), HTTPStatus.BAD_REQUEST)
-                return
+                nameplate_data = fallback_nameplate_data(exc, brand, model)
             prefill_brand = nameplate_data.get("brand") or brand
             prefill_model = nameplate_data.get("model") or model
             if prefill_brand and prefill_model:

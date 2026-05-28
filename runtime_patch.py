@@ -55,9 +55,15 @@ AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match th
         model = nameplate_data.get("model") or fallback_model
         product = _product_prefill(brand, model)
         raw_text = nameplate_data.get("raw_text") or ""
+        recognition_error = nameplate_data.get("recognition_error")
+        recognition_notice = (
+            f"""<div class="model-check-notice"><strong>AI reading is temporarily busy.</strong>
+OpenAI is rate-limited right now. The uploaded photo is saved; type the brand and model from the nameplate, then continue matching.</div>"""
+            if recognition_error else ""
+        )
         return g["page"]("Confirm Nameplate", f"""
 <section><h2>Confirm refrigerator information</h2>
-<p>Check the nameplate and product information. Correct anything wrong before matching gasket records.</p>
+<p>Check the nameplate and product information. Correct anything wrong before matching gasket records.</p>{recognition_notice}
 <div class="result-grid"><div><h3>Nameplate photo</h3><button class="image-open" type="button" data-image-viewer-src="{esc(upload_url)}"><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></button><p class="muted">Click the nameplate photo to zoom and drag.</p></div>
 <form method="post" action="/match" enctype="multipart/form-data"><h3>Read information</h3>
 <input type="hidden" name="upload_url" value="{esc(upload_url)}">
@@ -263,8 +269,16 @@ main{max-width:none;padding:0}
             try:
                 nameplate_data = g["identify_nameplate"](file_field["data"], file_field["filename"])
             except Exception as exc:
-                self.send_html(g["render_home"](f"Nameplate recognition failed: {exc}"), HTTPStatus.BAD_REQUEST)
-                return
+                if "fallback_nameplate_data" in g:
+                    nameplate_data = g["fallback_nameplate_data"](exc, brand, model)
+                else:
+                    nameplate_data = {
+                        "brand": brand or None,
+                        "model": model or None,
+                        "raw_text": "",
+                        "confidence": 0,
+                        "recognition_error": str(exc),
+                    }
             prefill_brand = nameplate_data.get("brand") or brand
             prefill_model = nameplate_data.get("model") or model
             if prefill_brand and prefill_model:
