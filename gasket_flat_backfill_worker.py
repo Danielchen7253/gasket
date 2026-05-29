@@ -330,11 +330,11 @@ def main() -> None:
             if not products:
                 log("no more products")
                 break
-            after_id = int(products[-1]["id"])
-            report["last_seen_id"] = after_id
             existing_ids = existing_gasket_product_ids(client, [int(row["id"]) for row in products])
 
             for product in products:
+                after_id = int(product["id"])
+                report["last_seen_id"] = after_id
                 report["products_scanned"] += 1
                 product_id = int(product["id"])
                 if product_id in existing_ids:
