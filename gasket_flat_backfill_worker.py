@@ -201,10 +201,10 @@ def replace_nonverified_flat_gasket(client: httpx.Client, product_id: int, row: 
     insert_response.raise_for_status()
 
 
-def upsert_catalog_candidate(client: httpx.Client, product: dict, row: dict) -> None:
+def upsert_catalog_candidate(client: httpx.Client, product: dict, row: dict) -> bool:
     part = row.get("part_number") or row.get("universal_part_number")
     if not part:
-        return
+        return False
     existing = rest_get(
         client,
         CATALOG_TABLE,
@@ -270,13 +270,14 @@ def upsert_catalog_candidate(client: httpx.Client, product: dict, row: dict) -> 
             json=payload,
         )
         patch_response.raise_for_status()
-        return
+        return True
     post_response = client.post(
         f"{SUPABASE_URL.rstrip('/')}/rest/v1/{CATALOG_TABLE}",
         headers=supabase_headers("return=minimal"),
         json=payload,
     )
     post_response.raise_for_status()
+    return True
 
 
 def write_report(report: dict) -> None:
@@ -353,8 +354,8 @@ def main() -> None:
                     replace_nonverified_flat_gasket(client, product_id, row)
                     report["flat_gaskets_written"] += 1
                     try:
-                        upsert_catalog_candidate(client, product, row)
-                        report["catalog_rows_touched"] += 1
+                        if upsert_catalog_candidate(client, product, row):
+                            report["catalog_rows_touched"] += 1
                     except Exception as exc:
                         report["errors"] += 1
                         log(f"catalog upsert failed for {brand} {model}: {exc}")
