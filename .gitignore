@@ -8,5 +8,6 @@ __pycache__/
 *.log
 *.err.log
 *.out.log
+main_table_backfill_report.json
 .DS_Store
 Thumbs.db
