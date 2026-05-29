@@ -290,7 +290,7 @@ def start_after_id() -> int:
     if not REPORT_PATH.exists():
         return 0
     try:
-        report = json.loads(REPORT_PATH.read_text(encoding="utf-8"))
+        report = json.loads(REPORT_PATH.read_text(encoding="utf-8-sig"))
     except Exception:
         return 0
     return int(report.get("last_seen_id") or 0)
