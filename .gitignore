@@ -9,5 +9,6 @@ __pycache__/
 *.err.log
 *.out.log
 main_table_backfill_report.json
+gasket_flat_backfill_report.json
 .DS_Store
 Thumbs.db
