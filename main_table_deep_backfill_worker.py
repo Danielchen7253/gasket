@@ -52,6 +52,16 @@ SLEEP_BETWEEN_PRODUCTS = float(os.getenv("MAIN_DEEP_SLEEP_SECONDS", "0.5"))
 MAX_PRODUCTS_PER_RUN = int(os.getenv("MAIN_DEEP_MAX_PRODUCTS_PER_RUN", "0"))
 RUN_FOREVER = os.getenv("MAIN_DEEP_RUN_FOREVER", "1") == "1"
 SOURCE_FETCH_LIMIT = int(os.getenv("MAIN_DEEP_SOURCE_FETCH_LIMIT", "5"))
+PRIORITY_BRANDS = [
+    item.strip()
+    for item in os.getenv(
+        "MAIN_DEEP_PRIORITY_BRANDS",
+        "Whirlpool,GE,General Electric,Frigidaire,LG,Samsung,Sub-Zero,True,Turbo Air,"
+        "Beverage-Air,Traulsen,Delfield,Viking,KitchenAid,Maytag,Bosch,Thermador,"
+        "Miele,Fisher & Paykel,Haier,Arctic Air,Everest,Continental Refrigerator",
+    ).split(",")
+    if item.strip()
+]
 
 TARGET_SELECT = (
     "id,brand,equipment_model,manufacturer,product_type,manufacture_date,"
@@ -229,6 +239,12 @@ def get_products(after_id: int, limit: int) -> tuple[list[dict[str, Any]], int]:
 
 
 def get_next_batch(report: dict[str, Any]) -> list[dict[str, Any]]:
+    priority_rows = get_priority_brand_batch(PRODUCT_BATCH_SIZE)
+    if priority_rows:
+        report["priority_brand_batches"] = int(report.get("priority_brand_batches") or 0) + 1
+        write_report(report)
+        return priority_rows
+
     after_id = int(report.get("last_seen_id") or 0)
     for _ in range(20):
         rows, last_raw_id = get_products(after_id, PRODUCT_BATCH_SIZE)
@@ -244,6 +260,40 @@ def get_next_batch(report: dict[str, Any]) -> list[dict[str, Any]]:
     write_report(report)
     rows, _ = get_products(0, PRODUCT_BATCH_SIZE)
     return rows
+
+
+def get_priority_brand_batch(limit: int) -> list[dict[str, Any]]:
+    if not PRIORITY_BRANDS:
+        return []
+    gathered: list[dict[str, Any]] = []
+    with httpx.Client(timeout=30) as client:
+        for brand in PRIORITY_BRANDS:
+            if len(gathered) >= limit:
+                break
+            response = client.get(
+                f"{SUPABASE_URL}/rest/v1/{PRODUCT_TABLE}",
+                params={
+                    "select": TARGET_SELECT,
+                    "brand": f"ilike.{brand}",
+                    "equipment_model": "not.is.null",
+                    "data_status": "in.(parts_catalog,home_parts_catalog,ai_structured,manual_research_structured)",
+                    "order": "last_enriched_at.asc.nullsfirst,id.asc",
+                    "limit": str(max(8, min(40, limit))),
+                },
+                headers=headers(),
+            )
+            response.raise_for_status()
+            for row in response.json():
+                if (
+                    row.get("brand")
+                    and row.get("equipment_model")
+                    and plausible_model(row.get("equipment_model"))
+                    and product_missing_any(row)
+                ):
+                    gathered.append(row)
+                    if len(gathered) >= limit:
+                        break
+    return gathered
 
 
 def url_domain(url: str | None) -> str:
@@ -455,7 +505,9 @@ def promote_image(product: dict[str, Any]) -> dict[str, Any]:
     with httpx.Client(timeout=35) as client:
         if product.get("product_image_url") and is_displayable_image_url(client, product.get("product_image_url"), timeout=4):
             return {}
-        quick_promote_product_image(client, product, limit=6)
+        promoted = quick_promote_product_image(client, product, limit=6)
+    if promoted:
+        return {"product_image_url": "promoted"}
     return {}
 
 
