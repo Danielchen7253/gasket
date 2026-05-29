@@ -45,6 +45,7 @@ REPORT_PATH = ROOT / "main_table_deep_backfill_report.json"
 LOG_PATH = ROOT / "main_table_deep_backfill.log"
 
 PRODUCT_BATCH_SIZE = int(os.getenv("MAIN_DEEP_BATCH_SIZE", "40"))
+RAW_FETCH_SIZE = int(os.getenv("MAIN_DEEP_RAW_FETCH_SIZE", "250"))
 FIELD_TIMEOUT_SECONDS = float(os.getenv("MAIN_DEEP_FIELD_TIMEOUT_SECONDS", "25"))
 PRODUCT_TIMEOUT_SECONDS = float(os.getenv("MAIN_DEEP_PRODUCT_TIMEOUT_SECONDS", "75"))
 SLEEP_BETWEEN_PRODUCTS = float(os.getenv("MAIN_DEEP_SLEEP_SECONDS", "0.5"))
@@ -130,16 +131,75 @@ def product_missing_any(row: dict[str, Any]) -> bool:
             not row.get("door_count"),
             not row.get("door_layout"),
             not row.get("door_positions"),
-            not row.get("official_product_url"),
-            not row.get("spec_sheet_url"),
-            not row.get("manual_url"),
-            not row.get("lifecycle_evidence_url"),
+            not is_url(row.get("official_product_url")),
+            not is_url(row.get("spec_sheet_url")),
+            not is_url(row.get("manual_url")),
+            not is_url(row.get("lifecycle_evidence_url")),
             not row.get("last_enriched_at"),
         ]
     )
 
 
-def get_products(after_id: int, limit: int) -> list[dict[str, Any]]:
+BAD_MODEL_TOKENS = {
+    "ADOBE",
+    "AUX",
+    "CAMERA",
+    "COLORSPACE",
+    "DECODE",
+    "DEVICERGB",
+    "EXIF",
+    "FALSE",
+    "FILTER",
+    "IMAGE",
+    "INDEXED",
+    "INDESIGN",
+    "JPEG",
+    "LENGTH",
+    "METADATA",
+    "OUTLINES",
+    "PDF",
+    "PHOTOSHOP",
+    "STREAM",
+    "SUBTYPE",
+    "TEXT",
+    "THUMB",
+    "TIFF",
+    "TRAPPED",
+    "TYPE",
+    "UUID",
+    "XMP",
+    "XML",
+    "XMLNS",
+    "XOBJECT",
+}
+
+
+def plausible_model(value: str | None) -> bool:
+    raw = clean(value) or ""
+    compact = normalized(raw)
+    if len(compact) < 3 or len(compact) > 28:
+        return False
+    if re.search(r"[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}", raw, re.I):
+        return False
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}.*", raw):
+        return False
+    upper_words = set(re.findall(r"[A-Z]{2,}", raw.upper()))
+    if upper_words & BAD_MODEL_TOKENS:
+        return False
+    if raw.count("/") >= 2:
+        return False
+    if "/" in raw and not re.search(r"\d", raw):
+        return False
+    if re.fullmatch(r"\d{1,3}[-/]\d{1,3}(?:T\d+)?", raw):
+        return False
+    if not re.search(r"\d", compact):
+        return False
+    if not re.search(r"[A-Z]", compact):
+        return len(compact) >= 5
+    return True
+
+
+def get_products(after_id: int, limit: int) -> tuple[list[dict[str, Any]], int]:
     with httpx.Client(timeout=30) as client:
         response = client.get(
             f"{SUPABASE_URL}/rest/v1/{PRODUCT_TABLE}",
@@ -147,25 +207,43 @@ def get_products(after_id: int, limit: int) -> list[dict[str, Any]]:
                 "select": TARGET_SELECT,
                 "brand": "not.is.null",
                 "equipment_model": "not.is.null",
+                "data_status": "in.(parts_catalog,home_parts_catalog,ai_structured,manual_research_structured)",
                 "id": f"gt.{after_id}",
                 "order": "id.asc",
-                "limit": str(limit),
+                "limit": str(max(limit, RAW_FETCH_SIZE)),
             },
             headers=headers(),
         )
         response.raise_for_status()
         rows = response.json()
-    return [row for row in rows if row.get("brand") and row.get("equipment_model") and product_missing_any(row)]
+    last_raw_id = int(rows[-1]["id"]) if rows else after_id
+    usable = [
+        row
+        for row in rows
+        if row.get("brand")
+        and row.get("equipment_model")
+        and plausible_model(row.get("equipment_model"))
+        and product_missing_any(row)
+    ]
+    return usable[:limit], last_raw_id
 
 
 def get_next_batch(report: dict[str, Any]) -> list[dict[str, Any]]:
     after_id = int(report.get("last_seen_id") or 0)
-    rows = get_products(after_id, PRODUCT_BATCH_SIZE)
-    if rows:
-        return rows
+    for _ in range(20):
+        rows, last_raw_id = get_products(after_id, PRODUCT_BATCH_SIZE)
+        if rows:
+            return rows
+        if last_raw_id <= after_id:
+            break
+        report["last_seen_id"] = last_raw_id
+        report["skipped_unusable_model_rows"] = int(report.get("skipped_unusable_model_rows") or 0) + (last_raw_id - after_id)
+        write_report(report)
+        after_id = last_raw_id
     report["last_seen_id"] = 0
     write_report(report)
-    return get_products(0, PRODUCT_BATCH_SIZE)
+    rows, _ = get_products(0, PRODUCT_BATCH_SIZE)
+    return rows
 
 
 def url_domain(url: str | None) -> str:
@@ -173,6 +251,10 @@ def url_domain(url: str | None) -> str:
         return urlparse(url or "").netloc.lower().removeprefix("www.")
     except Exception:
         return ""
+
+
+def is_url(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith(("http://", "https://"))
 
 
 def source_domain_rank(url: str | None) -> int:
@@ -385,7 +467,7 @@ def enrich_source_links(product: dict[str, Any]) -> dict[str, Any]:
 
 
 def patch_one_from_source(product: dict[str, Any], field_name: str) -> dict[str, Any]:
-    if product.get(field_name):
+    if is_url(product.get(field_name)):
         return {}
     payload = page_link_candidates(product)
     if field_name not in payload:
@@ -448,7 +530,7 @@ def needed_tasks(product: dict[str, Any]) -> dict[str, Any]:
     if not product.get("product_image_url"):
         tasks["product_image"] = FIELD_TASKS["product_image"]
     for field_name in ("official_product_url", "spec_sheet_url", "manual_url", "lifecycle_evidence_url"):
-        if not product.get(field_name):
+        if not is_url(product.get(field_name)):
             tasks[field_name] = FIELD_TASKS[field_name]
     for field_name in ("door_count", "door_layout", "door_positions"):
         if not product.get(field_name):
