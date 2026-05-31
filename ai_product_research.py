@@ -169,11 +169,124 @@ def price_for_dimensions(width_in: float | None, height_in: float | None) -> flo
     return 120.0
 
 
+DIMENSION_PAIR_RE = re.compile(
+    r"(?P<w>\d+(?:\.\d+)?(?:\s+\d+/\d+)?)\s*(?:\"|in|inch|inches)?\s*(?:x|×|X)\s*"
+    r"(?P<h>\d+(?:\.\d+)?(?:\s+\d+/\d+)?)",
+    re.I,
+)
+
+
+def parse_fractional_number(value: str | None) -> float | None:
+    if not value:
+        return None
+    value = value.strip().replace("-", " ")
+    try:
+        return round(float(value), 3)
+    except ValueError:
+        pass
+    parts = value.split()
+    total = 0.0
+    for part in parts:
+        if "/" in part:
+            try:
+                numerator, denominator = part.split("/", 1)
+                total += float(numerator) / float(denominator)
+            except (ValueError, ZeroDivisionError):
+                return None
+        else:
+            try:
+                total += float(part)
+            except ValueError:
+                return None
+    return round(total, 3) if total else None
+
+
+def parse_dimensions_text(value: str | None) -> tuple[float | None, float | None]:
+    match = DIMENSION_PAIR_RE.search(value or "")
+    if not match:
+        return None, None
+    return parse_fractional_number(match.group("w")), parse_fractional_number(match.group("h"))
+
+
 def clean_door_key(value: str | None, index: int) -> str:
     key = re.sub(r"[^a-z0-9_]+", "_", (value or "").lower()).strip("_")
     if not key or key in {"door", "door_1", "door_2", "door_3"}:
         return f"door_{index}"
     return key[:80]
+
+
+def normalize_door_position(row: dict[str, Any], index: int, layout_hint: str = "") -> dict[str, str]:
+    raw = " ".join(
+        str(row.get(key) or "")
+        for key in ("key", "label", "door_position", "door_position_display", "gasket_name")
+    )
+    text = normalize_model(raw)
+    layout_text = normalize_model(layout_hint)
+    has_left = "LEFT" in text
+    has_right = "RIGHT" in text
+    has_freezer = "FREEZER" in text
+    has_drawer = "DRAWER" in text
+    has_fresh_food = "FRESHFOOD" in text or "REFRIGERATOR" in text or "FRIDGE" in text
+
+    if has_left and has_fresh_food:
+        return {"key": "left_fresh_food_door", "label": "Left refrigerator door"}
+    if has_right and has_fresh_food:
+        return {"key": "right_fresh_food_door", "label": "Right refrigerator door"}
+    if has_freezer and has_drawer:
+        return {"key": "freezer_drawer", "label": "Freezer drawer"}
+    if has_left and has_freezer:
+        return {"key": "left_freezer_door", "label": "Left freezer door"}
+    if has_right and has_freezer:
+        return {"key": "right_freezer_door", "label": "Right freezer door"}
+    if has_freezer:
+        return {"key": "freezer_door", "label": "Freezer door"}
+    if has_fresh_food and ("SIDEBYSIDE" in layout_text or "SIDE" in layout_text):
+        return {"key": "fresh_food_door", "label": "Fresh food door"}
+    if has_left:
+        return {"key": "left_door", "label": "Left door"}
+    if has_right:
+        return {"key": "right_door", "label": "Right door"}
+    if "SINGLE" in text or "FRONT" in text:
+        return {"key": "single_door", "label": "Single door"}
+    key = clean_door_key(row.get("key") or row.get("door_position"), index)
+    label = row.get("label") or row.get("door_position_display") or key.replace("_", " ").title()
+    return {"key": key, "label": label}
+
+
+def dedupe_door_positions(product: dict[str, Any], positions: list[dict[str, str]]) -> list[dict[str, str]]:
+    layout_hint = " ".join(
+        str(product.get(key) or "")
+        for key in ("door_layout", "product_type", "source_summary")
+    )
+    normalized: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for index, row in enumerate(positions, start=1):
+        item = normalize_door_position(row, index, layout_hint)
+        if item["key"] in seen:
+            continue
+        seen.add(item["key"])
+        normalized.append(item)
+
+    keys = {item["key"] for item in normalized}
+    if {"fresh_food_door", "freezer_door"}.issubset(keys):
+        normalized = [item for item in normalized if item["key"] not in {"left_door", "right_door"}]
+        keys = {item["key"] for item in normalized}
+    if {"left_fresh_food_door", "right_fresh_food_door"}.issubset(keys):
+        normalized = [item for item in normalized if item["key"] not in {"left_door", "right_door", "fresh_food_door"}]
+        keys = {item["key"] for item in normalized}
+    if "single_door" in keys and len(normalized) > 1:
+        normalized = [item for item in normalized if item["key"] != "single_door"]
+
+    try:
+        count = int(product.get("door_count") or 0)
+    except Exception:
+        count = 0
+    layout_text = normalize_model(layout_hint)
+    if "SIDEBYSIDE" in layout_text and {"fresh_food_door", "freezer_door"}.issubset({item["key"] for item in normalized}):
+        return [item for item in normalized if item["key"] in {"fresh_food_door", "freezer_door"}]
+    if count and len(normalized) > count:
+        return normalized[:count]
+    return normalized
 
 
 def default_door_positions(count: int, layout_hint: str = "") -> list[dict[str, str]]:
@@ -205,6 +318,7 @@ def reconcile_door_positions(product: dict[str, Any], positions: list[dict[str, 
         count = int(product.get("door_count") or 0)
     except Exception:
         count = 0
+    positions = dedupe_door_positions(product, positions)
     if count and len(positions) >= count:
         return positions[:count]
     layout_hint = " ".join(
@@ -219,9 +333,7 @@ def reconcile_door_positions(product: dict[str, Any], positions: list[dict[str, 
     for item in expected:
         if item["key"] not in keys:
             merged.append(item)
-    if len(merged) >= len(expected):
-        return merged
-    return positions
+    return dedupe_door_positions(product, merged if len(merged) >= len(expected) else positions)
 
 
 def build_prompt(brand: str, model: str, nameplate_data: dict[str, Any] | None) -> str:
@@ -244,15 +356,15 @@ Return JSON only. Do not include markdown.
 
 Rules:
 - The returned brand and model must match the confirmed nameplate.
-- Give the most complete useful answer now, even if some dimensions are estimated.
-- Do not invent fake exact dimensions. Use size_status: "official", "cross_reference", "estimated", or "unknown".
+- Give the most complete source-backed answer now. Do not estimate gasket dimensions.
+- Do not invent fake exact dimensions. Use size_status: "official", "cross_reference", or "unknown".
 - Door positions must be customer understandable and specific: left fresh food door, right fresh food door, freezer drawer, left door, right door, etc.
 - One door position equals one gasket quote item. A 3-door French door unit should return 3 gasket rows.
-- The gaskets array must contain one row for every known door position. If an exact dimension is not public, still return the OEM or cross-reference part number and use size_status "unknown" or "estimated".
-- Do not return empty gaskets when a parts site, manual, exploded diagram, or same-family part listing identifies a gasket.
+- The gaskets array must contain one row for every known door position. If an exact dimension is not public, leave width_in, height_in, and dimensions_text null.
+- Do not return empty gaskets when a parts site, manual, or exploded diagram identifies a gasket for this exact model.
 - Only use size_status "official" when the source gives the exact gasket dimensions or exact OEM part fit for this exact model and door position.
-- If dimensions are not public, keep width_in and height_in null and write dimensions_text "not publicly listed; customer measurement required".
-- Include sources. If a field is inferred from same-family parts, explain that in evidence_summary and lower confidence.
+- If dimensions are not public, keep width_in, height_in, and dimensions_text null.
+- Include sources. Do not infer dimensions from same-family parts.
 - Do not spend effort on product images unless they are already obvious from a source page.
 
 JSON shape:
@@ -288,13 +400,13 @@ JSON shape:
       "universal_part_number": "...",
       "width_in": null,
       "height_in": null,
-      "dimensions_text": "not publicly listed / estimated ...",
+      "dimensions_text": null,
       "gasket_color": "Gray",
       "gasket_install_type": "magnetic push-in gasket",
       "gasket_profile": "multi-bellows magnetic push-in",
       "gasket_image_url": "...",
       "profile_image_url": "...",
-      "size_status": "official|cross_reference|estimated|unknown",
+      "size_status": "official|cross_reference|unknown",
       "source_name": "...",
       "source_url": "...",
       "evidence_summary": "...",
@@ -334,9 +446,8 @@ Focus only on refrigerator door gasket information:
 - Search manufacturer parts, Sears PartsDirect, PartSelect, RepairClinic, AppliancePartsPros, PartsDr, Parts Town,
   WebstaurantStore, and manuals/exploded diagrams.
 - Return one gasket row per actual door position.
-- If a part number is known but dimensions are not public, return the part number and dimensions_text like
-  "not publicly listed; customer measurement required".
-- If a dimension is estimated from same-family structure, mark size_status "estimated" and set confidence lower.
+- If a part number is known but dimensions are not public, return the part number and leave width_in, height_in, and dimensions_text null.
+- Do not estimate dimensions from same-family structure.
 - Do not use generic category dimensions unless the source clearly matches this exact model or compatible family.
 """
 
@@ -436,15 +547,11 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
         for index, row in enumerate(raw_positions, start=1):
             if not isinstance(row, dict):
                 continue
-            key = clean_door_key(row.get("key") or row.get("door_position"), index)
-            label = row.get("label") or row.get("door_position_display") or key.replace("_", " ").title()
-            positions.append({"key": key, "label": label})
+            positions.append(normalize_door_position(row, index, " ".join(str(product.get(k) or "") for k in ("door_layout", "product_type", "source_summary"))))
 
     if not positions:
         for index, row in enumerate(gaskets, start=1):
-            key = clean_door_key(row.get("door_position"), index)
-            label = row.get("door_position_display") or key.replace("_", " ").title()
-            positions.append({"key": key, "label": label})
+            positions.append(normalize_door_position(row, index, " ".join(str(product.get(k) or "") for k in ("door_layout", "product_type", "source_summary"))))
 
     if positions:
         positions = reconcile_door_positions(product, positions)
@@ -468,7 +575,6 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
                 "door_position": position["key"],
                 "door_position_display": position["label"],
                 "gasket_name": f"{position['label']} gasket",
-                "dimensions_text": "Customer measurement required",
                 "gasket_install_type": "magnetic gasket",
                 "size_status": "unknown",
                 "source_name": "AI structured product match",
@@ -481,30 +587,53 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
             for index, position in enumerate(positions, start=1)
         ]
 
+    if positions:
+        aligned_gaskets: list[dict[str, Any]] = []
+        used_indexes: set[int] = set()
+        for position_index, position in enumerate(positions, start=1):
+            match_index = None
+            for gasket_index, row in enumerate(gaskets):
+                if gasket_index in used_indexes:
+                    continue
+                row_position = normalize_door_position(
+                    row,
+                    gasket_index + 1,
+                    " ".join(str(product.get(k) or "") for k in ("door_layout", "product_type", "source_summary")),
+                )
+                if row_position["key"] == position["key"]:
+                    match_index = gasket_index
+                    break
+            if match_index is None:
+                fallback_index = position_index - 1
+                if fallback_index < len(gaskets) and fallback_index not in used_indexes:
+                    match_index = fallback_index
+                else:
+                    for gasket_index in range(len(gaskets)):
+                        if gasket_index not in used_indexes:
+                            match_index = gasket_index
+                            break
+            if match_index is not None and match_index < len(gaskets):
+                row = dict(gaskets[match_index])
+                used_indexes.add(match_index)
+            else:
+                row = {
+                    "gasket_install_type": "magnetic gasket",
+                    "size_status": "unknown",
+                    "source_name": "Door layout reconciliation",
+                    "source_url": product.get("official_product_url") or product.get("manual_url"),
+                    "evidence_summary": "Door position is required by the product door layout; gasket detail still needs source confirmation.",
+                    "confidence_score": 45,
+                    "needs_customer_confirmation": True,
+                    "customer_confirmation_note": "Confirm dimensions and profile before production.",
+                }
+            row["door_index"] = position_index
+            row["door_position"] = position["key"]
+            row["door_position_display"] = position["label"]
+            row["gasket_name"] = row.get("gasket_name") or f"{position['label']} gasket"
+            aligned_gaskets.append(row)
+        gaskets = aligned_gaskets
+
     normalized_gaskets = []
-    existing_gasket_keys = {clean_door_key(row.get("door_position"), index) for index, row in enumerate(gaskets, start=1)}
-    for position in positions:
-        if gaskets and len(gaskets) >= len(positions):
-            break
-        if position["key"] in existing_gasket_keys:
-            continue
-        gaskets.append(
-            {
-                "door_index": len(gaskets) + 1,
-                "door_position": position["key"],
-                "door_position_display": position["label"],
-                "gasket_name": f"{position['label']} gasket",
-                "dimensions_text": "Customer measurement required",
-                "gasket_install_type": "magnetic gasket",
-                "size_status": "unknown",
-                "source_name": "Door layout reconciliation",
-                "source_url": product.get("official_product_url") or product.get("manual_url"),
-                "evidence_summary": "Door position is required by the product door layout; gasket detail still needs source confirmation.",
-                "confidence_score": 45,
-                "needs_customer_confirmation": True,
-                "customer_confirmation_note": "Confirm dimensions and profile before production.",
-            }
-        )
 
     used_gasket_keys: set[str] = set()
     for index, row in enumerate(gaskets, start=1):
@@ -517,6 +646,10 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
         used_gasket_keys.add(key)
         width = as_float(row.get("width_in"))
         height = as_float(row.get("height_in"))
+        if not (width and height):
+            parsed_width, parsed_height = parse_dimensions_text(row.get("dimensions_text"))
+            width = width or parsed_width
+            height = height or parsed_height
         base_price = price_for_dimensions(width, height)
         normalized_gaskets.append(
             {
@@ -529,7 +662,7 @@ def normalize_research(research: dict[str, Any], brand: str, model: str) -> dict
                 "width_in": width,
                 "height_in": height,
                 "perimeter_in": round(2 * (width + height), 3) if width and height else None,
-                "dimensions_text": row.get("dimensions_text") or ("Customer measurement required" if not (width and height) else None),
+                "dimensions_text": row.get("dimensions_text") if (width and height or row.get("dimensions_text")) else None,
                 "gasket_color": row.get("gasket_color"),
                 "gasket_install_type": row.get("gasket_install_type"),
                 "gasket_profile": row.get("gasket_profile"),

@@ -196,6 +196,11 @@ def main() -> None:
                 report["recent"].append({"product": label, "error": str(exc)[:500]})
                 log(f"error {label}: {exc}")
                 write_report(report)
+                if "insufficient_quota" in str(exc) or "exceeded your current quota" in str(exc).lower():
+                    report["stopped_reason"] = "OpenAI API quota is unavailable"
+                    write_report(report)
+                    log("stopping key-info backfill because OpenAI quota is unavailable")
+                    break
     report["finished_at"] = now_iso()
     write_report(report)
     log(f"done processed={report['processed']} updated={report['updated']} errors={report['errors']}")
