@@ -26,10 +26,8 @@ ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
 load_dotenv(ROOT.parent / ".env")
 
-from fast_image_patch import quick_promote_product_image
 from product_image_search_crawler import (
     USER_AGENT,
-    is_displayable_image_url,
     search_bing_api_pages,
     search_brave_pages,
     search_duckduckgo_pages,
@@ -499,18 +497,6 @@ def infer_door_structure(product: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def promote_image(product: dict[str, Any]) -> dict[str, Any]:
-    if product.get("product_image_url") and float(product.get("product_image_confidence") or 0) >= 80:
-        return {}
-    with httpx.Client(timeout=35) as client:
-        if product.get("product_image_url") and is_displayable_image_url(client, product.get("product_image_url"), timeout=4):
-            return {}
-        promoted = quick_promote_product_image(client, product, limit=6)
-    if promoted:
-        return {"product_image_url": "promoted"}
-    return {}
-
-
 def enrich_source_links(product: dict[str, Any]) -> dict[str, Any]:
     payload = page_link_candidates(product)
     if payload:
@@ -565,7 +551,6 @@ def enrich_manufacture_date(product: dict[str, Any]) -> dict[str, Any]:
 
 
 FIELD_TASKS = {
-    "product_image": promote_image,
     "manufacture_date": enrich_manufacture_date,
     "door_count": lambda product: patch_one_from_door_structure(product, "door_count"),
     "door_layout": lambda product: patch_one_from_door_structure(product, "door_layout"),
@@ -579,8 +564,6 @@ FIELD_TASKS = {
 
 def needed_tasks(product: dict[str, Any]) -> dict[str, Any]:
     tasks = {}
-    if not product.get("product_image_url"):
-        tasks["product_image"] = FIELD_TASKS["product_image"]
     for field_name in ("official_product_url", "spec_sheet_url", "manual_url", "lifecycle_evidence_url"):
         if not is_url(product.get(field_name)):
             tasks[field_name] = FIELD_TASKS[field_name]

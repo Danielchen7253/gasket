@@ -943,6 +943,9 @@ def promote_best_image(client: httpx.Client, product: dict, candidates: list[dic
 
 
 def main() -> None:
+    if os.getenv("PRODUCT_IMAGE_BATCH_ENABLED", "0") != "1":
+        print("product image batch backfill is disabled; images are filled only on customer lookup")
+        return
     limit = int(os.getenv("PRODUCT_IMAGE_LIMIT", "100"))
     with httpx.Client(timeout=30) as client:
         products = get_products(client, limit)

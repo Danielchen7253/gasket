@@ -116,6 +116,9 @@ def delete_product_candidates(client: httpx.Client, product_id: int) -> int:
 
 
 def main() -> None:
+    if os.getenv("PRODUCT_IMAGE_BATCH_ENABLED", "0") != "1":
+        print("product image candidate batch promotion is disabled; images are filled only on customer lookup")
+        return
     checked = 0
     promoted = 0
     deleted_products = 0

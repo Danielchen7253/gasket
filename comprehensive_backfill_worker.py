@@ -18,7 +18,6 @@ import httpx
 from dotenv import load_dotenv
 
 from ai_product_research import enrich_confirmed_product, refresh_quote_items
-from fast_image_patch import quick_promote_product_image
 from product_image_search_crawler import is_displayable_image_url, supabase_headers
 
 
@@ -171,9 +170,7 @@ def needs_ai_research(product: dict[str, Any], gaskets: list[dict[str, Any]], qu
 
 
 def run_image_step(client: httpx.Client, product: dict[str, Any]) -> bool:
-    if not image_missing_or_dead(client, product):
-        return False
-    return bool(quick_promote_product_image(client, product, limit=int(os.getenv("COMPREHENSIVE_IMAGE_LIMIT", "8"))))
+    return False
 
 
 def run_ai_step(client: httpx.Client, product: dict[str, Any]) -> bool:
@@ -202,11 +199,6 @@ def process_product(client: httpx.Client, product: dict[str, Any], ai_budget: di
         {"last_enriched_at": now_iso()},
     )
 
-    try:
-        stats["image_promoted"] = run_image_step(client, product)
-    except Exception as exc:  # keep the rest of the product moving
-        stats["errors"].append(f"image: {exc}")
-
     gaskets: list[dict[str, Any]] = []
     quote_items: list[dict[str, Any]] = []
     try:
@@ -230,13 +222,6 @@ def process_product(client: httpx.Client, product: dict[str, Any], ai_budget: di
         stats["quote_refreshed"] = True
     except Exception as exc:
         print(f"  quote refresh skipped: {exc}", flush=True)
-
-    try:
-        latest = get_product_by_id(client, product_id) or product
-        if image_missing_or_dead(client, latest):
-            stats["image_promoted"] = run_image_step(client, latest) or stats["image_promoted"]
-    except Exception as exc:
-        stats["errors"].append(f"second image pass: {exc}")
 
     patch_product(
         client,

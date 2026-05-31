@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 import gasket_enrichment_crawler
 import gasket_spec_refresher
 import market_discovery_v2 as market_discovery_crawler
-import product_image_search_crawler
 import comprehensive_backfill_worker
 
 
@@ -84,17 +83,12 @@ def main() -> None:
 
     cycles = int(os.getenv("PIPELINE_CYCLES", "1"))
     pause_seconds = float(os.getenv("PIPELINE_PAUSE_SECONDS", "0"))
-    image_backfill_enabled = os.getenv("PIPELINE_IMAGE_BACKFILL_ENABLED", "0") == "1"
     comprehensive_backfill_enabled = os.getenv("PIPELINE_COMPREHENSIVE_BACKFILL_ENABLED", "1") == "1"
 
     for index in range(cycles):
         print(f"pipeline cycle {index + 1}/{cycles}")
         run_step("cross-validated model discovery", market_discovery_crawler.main)
-        if image_backfill_enabled:
-            os.environ.setdefault("PRODUCT_IMAGE_LIMIT", "20")
-            run_step("product image backfill", product_image_search_crawler.main)
-        else:
-            print("skipping product image backfill in high-frequency pipeline")
+        print("skipping product image backfill; images are only filled on customer lookup")
         ensure_gasket_placeholders(int(os.getenv("ENRICH_LIMIT", "120")))
         run_step("gasket spec refresh", gasket_spec_refresher.main)
         run_step("gasket data backfill", gasket_enrichment_crawler.main)
