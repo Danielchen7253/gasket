@@ -10,5 +10,6 @@ __pycache__/
 *.out.log
 main_table_backfill_report.json
 main_table_deep_backfill_report.json
+key_info_backfill_report.json
 .DS_Store
 Thumbs.db

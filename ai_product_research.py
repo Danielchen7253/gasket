@@ -205,6 +205,8 @@ def reconcile_door_positions(product: dict[str, Any], positions: list[dict[str, 
         count = int(product.get("door_count") or 0)
     except Exception:
         count = 0
+    if count and len(positions) >= count:
+        return positions[:count]
     layout_hint = " ".join(
         str(product.get(key) or "")
         for key in ("door_layout", "product_type", "source_summary")
@@ -248,8 +250,10 @@ Rules:
 - One door position equals one gasket quote item. A 3-door French door unit should return 3 gasket rows.
 - The gaskets array must contain one row for every known door position. If an exact dimension is not public, still return the OEM or cross-reference part number and use size_status "unknown" or "estimated".
 - Do not return empty gaskets when a parts site, manual, exploded diagram, or same-family part listing identifies a gasket.
+- Only use size_status "official" when the source gives the exact gasket dimensions or exact OEM part fit for this exact model and door position.
+- If dimensions are not public, keep width_in and height_in null and write dimensions_text "not publicly listed; customer measurement required".
 - Include sources. If a field is inferred from same-family parts, explain that in evidence_summary and lower confidence.
-- Product image should be an actual product photo, not a logo, icon, gasket, or manual cover when possible.
+- Do not spend effort on product images unless they are already obvious from a source page.
 
 JSON shape:
 {{
@@ -585,7 +589,6 @@ def update_product(client: httpx.Client, product_id: int, research: dict[str, An
     protect_existing_layout = (
         existing_status.startswith("manual_")
         or existing_source.startswith("manual_")
-        or (existing.get("door_positions") and existing_door_confidence >= new_door_confidence + 5)
     )
     payload = {
         "manufacturer": product.get("manufacturer"),
@@ -621,7 +624,7 @@ def update_product(client: httpx.Client, product_id: int, research: dict[str, An
         payload["door_layout_confidence"] = existing.get("door_layout_confidence")
         payload["door_layout_source"] = existing.get("door_layout_source")
         payload["door_layout_updated_at"] = now
-    if product.get("product_image_url"):
+    if product.get("product_image_url") and os.getenv("AI_RESEARCH_WRITE_PRODUCT_IMAGE", "1") == "1":
         payload.update(
             {
                 "product_image_url": product.get("product_image_url"),
