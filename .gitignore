@@ -12,5 +12,6 @@ main_table_backfill_report.json
 main_table_deep_backfill_report.json
 key_info_backfill_report.json
 free_key_info_scraper_report.json
+partstown_raw_gasket_crawler_report.json
 .DS_Store
 Thumbs.db
