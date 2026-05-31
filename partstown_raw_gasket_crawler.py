@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import gzip
+from html import unescape
 import json
 import os
 from pathlib import Path
@@ -39,6 +40,7 @@ BATCH_SIZE = int(os.getenv("PARTSTOWN_RAW_BATCH_SIZE", "50"))
 REQUEST_DELAY = float(os.getenv("PARTSTOWN_RAW_DELAY_SECONDS", "0.25"))
 HTTP_TIMEOUT = float(os.getenv("PARTSTOWN_RAW_HTTP_TIMEOUT", "20"))
 INCLUDE_BROAD_APPLIANCE = os.getenv("PARTSTOWN_RAW_INCLUDE_BROAD_APPLIANCE", "1") == "1"
+RESCAN = os.getenv("PARTSTOWN_RAW_RESCAN", "0") == "1"
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -106,6 +108,27 @@ BAD_PARTS = {
     "FREEZER",
     "REPLACEMENT",
 }
+NON_GASKET_TOKENS = {
+    "CASTER",
+    "CASTOR",
+    "CASTR",
+    "BOLT",
+    "HINGE",
+    "SHELF",
+    "PAN",
+    "DRAWER SLIDE",
+    "CUTTING BOARD",
+    "WHEEL",
+    "LEG",
+    "HANDLE",
+}
+
+GASKET_TERMS = ("gasket", "door seal")
+PRODUCT_BOUNDARY_RE = re.compile(
+    r"(?:add to cart\s+add to my parts\s+in my parts|in my parts|quick ship|list price)",
+    re.I,
+)
+MFR_PART_RE = re.compile(r"\bMfr\s+Part\s*#\s*:\s*([A-Z0-9][A-Z0-9\-./]{2,35})", re.I)
 
 
 @dataclass(frozen=True)
@@ -147,7 +170,7 @@ def normalize(value: str | None) -> str:
 
 
 def clean_text(value: str | None) -> str:
-    return re.sub(r"\s+", " ", value or "").strip()
+    return re.sub(r"\s+", " ", unescape(value or "")).strip()
 
 
 def clean_model(raw: str) -> str:
@@ -205,6 +228,8 @@ def canonical_part(value: str | None) -> str:
         return ""
     if part in BAD_PARTS:
         return ""
+    if any(token.replace(" ", "") in part for token in NON_GASKET_TOKENS):
+        return ""
     if not re.search(r"\d", part):
         return ""
     return part
@@ -217,6 +242,16 @@ def part_from_url(url: str) -> str:
     slug = urlparse(url).path.rstrip("/").split("/")[-1].upper()
     match = re.search(r"(\d{5,})$", slug)
     return canonical_part(match.group(1) if match else slug)
+
+
+def has_gasket_term(value: str) -> bool:
+    lower = value.lower()
+    return any(term in lower for term in GASKET_TERMS)
+
+
+def has_non_gasket_term(value: str) -> bool:
+    lower = value.lower()
+    return any(token.lower() in lower for token in NON_GASKET_TOKENS)
 
 
 def fetch(client: httpx.Client, url: str) -> bytes:
@@ -317,9 +352,60 @@ def door_position(context: str) -> str:
     return ""
 
 
+def product_name_from_chunk(chunk: str, part: str) -> str:
+    condensed = clean_text(chunk)
+    if not condensed:
+        return ""
+    end_markers = [" List Price:", " My Price:", " Unit of Measure:", " Mfr Part #:"]
+    end_positions = [condensed.find(marker) for marker in end_markers if condensed.find(marker) >= 0]
+    title = condensed[: min(end_positions)] if end_positions else condensed[:180]
+    if part:
+        part_index = title.upper().find(part.upper())
+        if part_index > 0:
+            brand_start = max(0, title.rfind(" ", 0, part_index - 1))
+            title = title[brand_start:].strip()
+    return title[:300].strip(" -|,;:")
+
+
+def mfr_product_chunks(text: str) -> list[tuple[str, str]]:
+    """Return (part_number, chunk) for individual PartsTown product cards."""
+    chunks: list[tuple[str, str]] = []
+    matches = list(MFR_PART_RE.finditer(text))
+    for index, match in enumerate(matches):
+        part = canonical_part(match.group(1))
+        if not part:
+            continue
+
+        previous_match_end = matches[index - 1].end() if index else 0
+        boundary_start = previous_match_end
+        for boundary in PRODUCT_BOUNDARY_RE.finditer(text, previous_match_end, match.start()):
+            boundary_start = boundary.end()
+
+        next_match_start = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        boundary_end = next_match_start
+        for boundary in PRODUCT_BOUNDARY_RE.finditer(text, match.end(), next_match_start):
+            boundary_end = boundary.start()
+            break
+
+        start = max(0, boundary_start - 80)
+        end = min(len(text), boundary_end + 220)
+        chunk = clean_text(text[start:end])
+        if chunk:
+            chunks.append((part, chunk))
+    return chunks
+
+
+def fallback_chunks(url: str, text: str, default_part: str) -> list[tuple[str, str]]:
+    if not default_part:
+        return []
+    return [(default_part, text[:3000])]
+
+
 def extract_rows(page: ModelPage, url: str, html: str) -> list[dict[str, Any]]:
     soup = BeautifulSoup(html, "html.parser")
     title = clean_text(soup.title.get_text(" ")) if soup.title else ""
+    if has_non_gasket_term(title):
+        return []
     text = clean_text(soup.get_text(" "))
     combined = f"{title} {text}"
     norm = normalize(combined)
@@ -333,65 +419,73 @@ def extract_rows(page: ModelPage, url: str, html: str) -> list[dict[str, Any]]:
     default_part = canonical_part(PART_RE.search(combined).group(1)) if PART_RE.search(combined) else ""
     default_part = default_part or part_from_url(url)
 
-    matches = list(DIMENSION_RE.finditer(text))
-    if not matches and not default_part:
+    chunks = mfr_product_chunks(text) or fallback_chunks(url, text, default_part)
+    if not chunks:
         return []
 
-    for index, match in enumerate(matches or [None], start=1):
-        width = height = None
-        dimensions_text = ""
-        start = 0
-        end = min(len(text), 900)
-        if match:
-            width = fraction_to_float(match.group("w"))
-            height = fraction_to_float(match.group("h"))
-            if not plausible_dimension(width, height):
+    for part, chunk in chunks:
+        product_name = product_name_from_chunk(chunk, part) or title[:300]
+        if not has_gasket_term(product_name):
+            continue
+        if has_non_gasket_term(chunk):
+            continue
+
+        matches = list(DIMENSION_RE.finditer(chunk))
+        if matches:
+            dimension_matches: Iterable[re.Match[str] | None] = matches
+        else:
+            dimension_matches = [None]
+
+        for match in dimension_matches:
+            width = height = None
+            dimensions_text = ""
+            context = chunk
+            if match:
+                width = fraction_to_float(match.group("w"))
+                height = fraction_to_float(match.group("h"))
+                if not plausible_dimension(width, height):
+                    continue
+                dimensions_text = match.group(0)
+                start = max(0, match.start() - 220)
+                end = min(len(chunk), match.end() + 260)
+                context = chunk[start:end]
+            if not part and not dimensions_text:
                 continue
-            dimensions_text = match.group(0)
-            start = max(0, match.start() - 300)
-            end = min(len(text), match.end() + 300)
-        context = text[start:end]
-        if "gasket" not in context.lower() and "door seal" not in context.lower() and match:
-            continue
-        part_match = PART_RE.search(context)
-        part = canonical_part(part_match.group(1) if part_match else "") or default_part
-        if not part and not dimensions_text:
-            continue
-        dedupe = (dimensions_text, part, door_position(context))
-        if dedupe in seen:
-            continue
-        seen.add(dedupe)
-        confidence = 35
-        if dimensions_text:
-            confidence += 30
-        if part:
-            confidence += 20
-        if door_position(context):
-            confidence += 8
-        if normalize(page.model) in normalize(context):
-            confidence += 7
-        rows.append(
-            {
-                "source_site": "PartsTown",
-                "source_url": url,
-                "brand": page.brand,
-                "equipment_model": page.model,
-                "normalized_brand": normalize(page.brand),
-                "normalized_model": normalize(page.model),
-                "part_number": part,
-                "part_name": title[:300] or None,
-                "is_gasket": True,
-                "dimensions_text": dimensions_text or None,
-                "width_in": width,
-                "height_in": height,
-                "door_position_text": door_position(context) or None,
-                "raw_text": context[:3000] if context else combined[:3000],
-                "confidence_score": min(100, confidence),
-                "crawl_status": "raw",
-                "parsed_at": now_iso(),
-                "updated_at": now_iso(),
-            }
-        )
+            dedupe = (dimensions_text, part, door_position(context))
+            if dedupe in seen:
+                continue
+            seen.add(dedupe)
+            confidence = 35
+            if dimensions_text:
+                confidence += 30
+            if part:
+                confidence += 20
+            if door_position(context):
+                confidence += 8
+            if normalize(page.model) in normalize(context):
+                confidence += 7
+            rows.append(
+                {
+                    "source_site": "PartsTown",
+                    "source_url": url,
+                    "brand": page.brand,
+                    "equipment_model": page.model,
+                    "normalized_brand": normalize(page.brand),
+                    "normalized_model": normalize(page.model),
+                    "part_number": part,
+                    "part_name": product_name or None,
+                    "is_gasket": True,
+                    "dimensions_text": dimensions_text or None,
+                    "width_in": width,
+                    "height_in": height,
+                    "door_position_text": door_position(context) or None,
+                    "raw_text": context[:3000] if context else combined[:3000],
+                    "confidence_score": min(100, confidence),
+                    "crawl_status": "raw",
+                    "parsed_at": now_iso(),
+                    "updated_at": now_iso(),
+                }
+            )
     return rows
 
 
@@ -412,6 +506,65 @@ def upsert_raw_rows(client: httpx.Client, rows: list[dict[str, Any]]) -> int:
     )
     response.raise_for_status()
     return len(response.json())
+
+
+def scan_key(page: ModelPage) -> tuple[str, str]:
+    return normalize(page.brand), normalize(page.model)
+
+
+def load_scanned_keys(client: httpx.Client) -> set[tuple[str, str]]:
+    if RESCAN:
+        return set()
+    scanned: set[tuple[str, str]] = set()
+    offset = 0
+    while True:
+        response = client.get(
+            f"{SUPABASE_URL}/rest/v1/parts_site_model_scan_log",
+            headers=headers(),
+            params={
+                "select": "normalized_brand,normalized_model",
+                "source_site": "eq.PartsTown",
+                "limit": "1000",
+                "offset": str(offset),
+            },
+        )
+        response.raise_for_status()
+        rows = response.json()
+        if not rows:
+            break
+        for row in rows:
+            scanned.add((row.get("normalized_brand") or "", row.get("normalized_model") or ""))
+        offset += len(rows)
+    return scanned
+
+
+def upsert_scan_log(
+    client: httpx.Client,
+    page: ModelPage,
+    status: str,
+    rows_found: int = 0,
+    error_message: str | None = None,
+) -> None:
+    payload = {
+        "source_site": "PartsTown",
+        "source_url": page.url,
+        "brand": page.brand,
+        "equipment_model": page.model,
+        "normalized_brand": normalize(page.brand),
+        "normalized_model": normalize(page.model),
+        "scan_status": status,
+        "raw_rows_found": rows_found,
+        "error_message": error_message,
+        "scanned_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    response = client.post(
+        f"{SUPABASE_URL}/rest/v1/parts_site_model_scan_log",
+        headers=headers("resolution=merge-duplicates,return=minimal"),
+        params={"on_conflict": "source_site,normalized_brand,normalized_model"},
+        json=payload,
+    )
+    response.raise_for_status()
 
 
 def crawl_model_page(client: httpx.Client, page: ModelPage) -> list[dict[str, Any]]:
@@ -440,23 +593,29 @@ def main() -> None:
         "models_scanned": 0,
         "raw_rows_found": 0,
         "raw_rows_written": 0,
+        "skipped_already_scanned": 0,
         "errors": 0,
         "recent": [],
     }
     write_report(report)
-    batch: list[dict[str, Any]] = []
     with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True) as client:
+        scanned_keys = load_scanned_keys(client)
+        log(f"loaded {len(scanned_keys)} previously scanned PartsTown models")
         pages = model_pages_from_sitemaps(client, MODEL_PAGE_LIMIT)
         log(f"loaded {len(pages)} PartsTown model pages")
         for page in pages:
             if report["raw_rows_found"] >= LIMIT:
                 break
+            if scan_key(page) in scanned_keys:
+                report["skipped_already_scanned"] += 1
+                continue
             report["models_scanned"] += 1
             try:
                 rows = crawl_model_page(client, page)
                 if rows:
-                    batch.extend(rows)
+                    written = upsert_raw_rows(client, rows)
                     report["raw_rows_found"] += len(rows)
+                    report["raw_rows_written"] += written
                     report["recent"].append(
                         {
                             "brand": page.brand,
@@ -470,19 +629,23 @@ def main() -> None:
                         }
                     )
                     log(f"{page.brand} {page.model}: raw_rows={len(rows)}")
-                if len(batch) >= BATCH_SIZE:
-                    report["raw_rows_written"] += upsert_raw_rows(client, batch)
-                    batch.clear()
-                    write_report(report)
+                    upsert_scan_log(client, page, "found", len(rows))
+                else:
+                    upsert_scan_log(client, page, "no_match", 0)
+                scanned_keys.add(scan_key(page))
+                write_report(report)
                 if REQUEST_DELAY:
                     time.sleep(REQUEST_DELAY)
             except Exception as exc:
                 report["errors"] += 1
                 report["recent"].append({"brand": page.brand, "model": page.model, "error": str(exc)[:300]})
                 log(f"error {page.brand} {page.model}: {exc}")
+                try:
+                    upsert_scan_log(client, page, "error", 0, str(exc)[:500])
+                    scanned_keys.add(scan_key(page))
+                except Exception as log_exc:
+                    log(f"scan log failed for {page.brand} {page.model}: {log_exc}")
                 write_report(report)
-        if batch:
-            report["raw_rows_written"] += upsert_raw_rows(client, batch)
     report["finished_at"] = now_iso()
     write_report(report)
     log(
