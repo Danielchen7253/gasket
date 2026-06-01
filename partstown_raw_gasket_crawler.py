@@ -121,9 +121,50 @@ NON_GASKET_TOKENS = {
     "WHEEL",
     "LEG",
     "HANDLE",
+    "MOTOR",
+    "SENSOR",
+    "PROBE",
+    "FAN BLADE",
+    "DOOR VENT",
+    "VENT",
 }
 
 GASKET_TERMS = ("gasket", "door seal")
+REFRIGERATION_TERMS = (
+    "refrigerator",
+    "refrigeration",
+    "freezer",
+    "cooler",
+    "cold",
+    "reach-in",
+    "reach in",
+    "prep table",
+    "merchandiser",
+    "undercounter",
+    "under counter",
+    "walk-in",
+    "walk in",
+    "ice machine",
+    "ice maker",
+    "chest freezer",
+    "display case",
+)
+EXCLUDED_APPLIANCE_TERMS = (
+    "dishwasher",
+    "dish washer",
+    "dishmachine",
+    "dish machine",
+    "washer",
+    "dryer",
+    "range",
+    "oven",
+    "cooktop",
+    "microwave",
+    "door vent",
+    "vent gasket",
+    "disposer",
+    "trash compactor",
+)
 PRODUCT_BOUNDARY_RE = re.compile(
     r"(?:add to cart\s+add to my parts\s+in my parts|in my parts|quick ship|list price)",
     re.I,
@@ -254,6 +295,25 @@ def has_non_gasket_term(value: str) -> bool:
     return any(token.lower() in lower for token in NON_GASKET_TOKENS)
 
 
+def has_refrigeration_term(value: str) -> bool:
+    lower = value.lower()
+    return any(term in lower for term in REFRIGERATION_TERMS)
+
+
+def has_excluded_appliance_term(value: str) -> bool:
+    lower = value.lower()
+    return any(term in lower for term in EXCLUDED_APPLIANCE_TERMS)
+
+
+def page_is_refrigeration(page: ModelPage, title: str, text: str) -> bool:
+    haystack = f"{title} {text[:20000]}"
+    if page.brand_slug.lower() in REFRIGERATION_BRANDS:
+        return True
+    if has_refrigeration_term(haystack):
+        return True
+    return False
+
+
 def fetch(client: httpx.Client, url: str) -> bytes:
     response = client.get(url, headers={"User-Agent": USER_AGENT}, follow_redirects=True, timeout=HTTP_TIMEOUT)
     response.raise_for_status()
@@ -323,6 +383,8 @@ def part_links(base_url: str, html: str, model: str) -> list[str]:
         score = 0
         if "GASKET" in norm or "DOORSEAL" in norm:
             score += 50
+        if has_excluded_appliance_term(haystack) or has_non_gasket_term(haystack):
+            score -= 80
         if model_norm and model_norm in norm:
             score += 20
         if "/m/" not in urlparse(absolute).path.lower():
@@ -411,6 +473,8 @@ def extract_rows(page: ModelPage, url: str, html: str) -> list[dict[str, Any]]:
     norm = normalize(combined)
     if normalize(page.model) not in norm:
         return []
+    if not page_is_refrigeration(page, title, text):
+        return []
     if "GASKET" not in norm and "DOORSEAL" not in norm:
         return []
 
@@ -427,7 +491,7 @@ def extract_rows(page: ModelPage, url: str, html: str) -> list[dict[str, Any]]:
         product_name = product_name_from_chunk(chunk, part) or title[:300]
         if not has_gasket_term(product_name):
             continue
-        if has_non_gasket_term(chunk):
+        if has_non_gasket_term(product_name) or has_excluded_appliance_term(product_name):
             continue
 
         matches = list(DIMENSION_RE.finditer(chunk))
@@ -500,12 +564,12 @@ def upsert_raw_rows(client: httpx.Client, rows: list[dict[str, Any]]) -> int:
         sanitized.append(item)
     response = client.post(
         f"{SUPABASE_URL}/rest/v1/parts_site_raw_gaskets",
-        headers=headers("resolution=merge-duplicates,return=representation"),
+        headers=headers("resolution=merge-duplicates,return=minimal"),
         params={"on_conflict": "source_site,source_url,part_number,normalized_model"},
         json=sanitized,
     )
     response.raise_for_status()
-    return len(response.json())
+    return len(sanitized)
 
 
 def scan_key(page: ModelPage) -> tuple[str, str]:
