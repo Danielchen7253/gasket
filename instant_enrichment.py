@@ -495,7 +495,7 @@ def run_image_task(product_id: int, nameplate_data: dict[str, Any] | None = None
             print(f"instant image enrichment failed for product {product_id}: {exc}", flush=True)
 
 
-def run_quick_image_task(product_id: int) -> dict[str, Any] | None:
+def run_quick_image_task(product_id: int, nameplate_data: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Fast foreground image fill for the product the customer is viewing now."""
     with httpx.Client(timeout=45) as client:
         product = get_product(client, product_id)
@@ -518,6 +518,17 @@ def run_quick_image_task(product_id: int) -> dict[str, Any] | None:
                 )
                 product = get_product(client, product_id) or product
             ok = quick_promote_product_image(client, product, limit=8)
+            if not ok:
+                ai_payload = promote_image_from_openai(client, product, nameplate_data)
+                if ai_payload:
+                    response = client.patch(
+                        f"{SUPABASE_URL}/rest/v1/refrigerator_products",
+                        params={"id": f"eq.{product_id}"},
+                        headers=supabase_headers("return=minimal"),
+                        json={key: value for key, value in ai_payload.items() if value not in (None, "")},
+                    )
+                    response.raise_for_status()
+                    ok = True
             refreshed = get_product(client, product_id)
             mark_task(
                 client,
@@ -570,6 +581,23 @@ def wait_for_core_result(product_id: int, max_seconds: float = 10.0) -> dict[str
             gasket_count = get_gasket_count(client, product_id) if product else 0
         latest = {"product": product, "gasket_count": gasket_count}
         if product and (gasket_count > 0 or product.get("door_positions") or product.get("door_count")):
+            return latest
+        if time.time() >= deadline:
+            return latest
+        time.sleep(1)
+
+
+def wait_for_customer_result(product_id: int, max_seconds: float = 25.0) -> dict[str, Any]:
+    """Wait for the active customer quote to become useful without doing bulk work."""
+    deadline = time.time() + max_seconds
+    latest: dict[str, Any] = {"product": None, "gasket_count": 0, "has_image": False}
+    while True:
+        with httpx.Client(timeout=15) as client:
+            product = get_product(client, product_id)
+            gasket_count = get_gasket_count(client, product_id) if product else 0
+            has_image = bool(product and is_displayable_image_url(client, product.get("product_image_url"), timeout=2.0))
+        latest = {"product": product, "gasket_count": gasket_count, "has_image": has_image}
+        if product and gasket_count > 0 and has_image:
             return latest
         if time.time() >= deadline:
             return latest

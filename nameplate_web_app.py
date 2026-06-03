@@ -832,6 +832,158 @@ def create_request(client: httpx.Client, customer: dict, upload_url: str | None,
     return saved
 
 
+def get_latest_request_for_product(client: httpx.Client, product_id: int) -> dict | None:
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/gasket_requests",
+        params={
+            "select": "*",
+            "matched_refrigerator_product_id": f"eq.{product_id}",
+            "order": "created_at.desc",
+            "limit": "1",
+        },
+        headers=supabase_headers(),
+    )
+    if response.status_code in {404, 406}:
+        return None
+    response.raise_for_status()
+    rows = response.json()
+    return rows[0] if rows else None
+
+
+def pdf_safe(value) -> str:
+    text = "" if value is None else str(value)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
+def pdf_escape(value) -> str:
+    return pdf_safe(value).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def wrap_pdf_text(value, width: int = 92) -> list[str]:
+    text = re.sub(r"\s+", " ", pdf_safe(value)).strip()
+    if not text:
+        return [""]
+    words = text.split(" ")
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        if len(current) + len(word) + 1 > width:
+            if current:
+                lines.append(current)
+            current = word
+        else:
+            current = f"{current} {word}".strip()
+    if current:
+        lines.append(current)
+    return lines
+
+
+def build_pdf(lines: list[str]) -> bytes:
+    max_lines = 46
+    pages = [lines[index:index + max_lines] for index in range(0, len(lines), max_lines)] or [[]]
+    objects: list[bytes] = []
+
+    def add_object(data: bytes) -> int:
+        objects.append(data)
+        return len(objects)
+
+    catalog_id = add_object(b"<< /Type /Catalog /Pages 2 0 R >>")
+    pages_id = add_object(b"")
+    font_id = add_object(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    page_ids: list[int] = []
+    for page_lines in pages:
+        content_lines = ["BT", "/F1 10 Tf", "48 760 Td", "14 TL"]
+        for line in page_lines:
+            content_lines.append(f"({pdf_escape(line)}) Tj")
+            content_lines.append("T*")
+        content_lines.append("ET")
+        content = "\n".join(content_lines).encode("latin-1", "replace")
+        content_id = add_object(
+            f"<< /Length {len(content)} >>\nstream\n".encode("latin-1") + content + b"\nendstream"
+        )
+        page_id = add_object(
+            f"<< /Type /Page /Parent {pages_id} 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 {font_id} 0 R >> >> /Contents {content_id} 0 R >>".encode("latin-1")
+        )
+        page_ids.append(page_id)
+    objects[pages_id - 1] = f"<< /Type /Pages /Kids [{' '.join(f'{page_id} 0 R' for page_id in page_ids)}] /Count {len(page_ids)} >>".encode("latin-1")
+
+    output = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = [0]
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(len(output))
+        output.extend(f"{index} 0 obj\n".encode("latin-1"))
+        output.extend(obj)
+        output.extend(b"\nendobj\n")
+    xref_pos = len(output)
+    output.extend(f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode("latin-1"))
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode("latin-1"))
+    output.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root {catalog_id} 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n".encode("latin-1")
+    )
+    return bytes(output)
+
+
+def render_quote_pdf(product: dict, quote_items: list[dict], request: dict | None) -> bytes:
+    nameplate_data = (request or {}).get("nameplate_data") or {}
+    if not nameplate_data and request:
+        nameplate_data = {
+            "brand": request.get("detected_brand"),
+            "model": request.get("detected_model"),
+            "raw_text": request.get("ocr_text"),
+        }
+    positions = infer_door_positions(product)
+    lines = [
+        "Refrigerator Door Gasket Quote",
+        f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        "",
+        "Refrigerator",
+        f"Brand: {product.get('brand') or ''}",
+        f"Model: {product.get('equipment_model') or ''}",
+        f"Product type: {product.get('product_type') or ''}",
+        f"Door count: {product.get('door_count') or len(positions) or ''}",
+        f"Door layout: {', '.join(item.get('label') or item.get('key') or '' for item in positions)}",
+        f"Status: {product.get('lifecycle_status') or product.get('data_status') or ''}",
+        f"Product image: {product.get('product_image_url') or 'Loading'}",
+        "",
+        "Nameplate",
+        f"OpenAI brand: {nameplate_data.get('brand') or product.get('brand') or ''}",
+        f"OpenAI model: {nameplate_data.get('model') or product.get('equipment_model') or ''}",
+        f"Serial: {nameplate_data.get('serial_number') or ''}",
+        f"Manufacturer: {nameplate_data.get('manufacturer') or product.get('manufacturer') or ''}",
+        f"Voltage: {nameplate_data.get('voltage') or ''}",
+        f"Refrigerant: {nameplate_data.get('refrigerant') or ''}",
+        "",
+        "Gasket options",
+    ]
+    if quote_items:
+        total = 0.0
+        for item in quote_items:
+            price = float(item.get("final_price_usd") or 0)
+            total += price
+            lines.extend(
+                [
+                    "",
+                    f"Door: {item.get('door_position_display') or item.get('door_position') or ''}",
+                    f"Part number: {item.get('part_number') or item.get('universal_part_number') or ''}",
+                    f"Size: {customer_gasket_size(item)}",
+                    f"Color: {item.get('color') or ''}",
+                    f"Install type: {item.get('gasket_type') or item.get('install_type') or ''}",
+                    f"Confidence: {item.get('confidence_score') or ''}%",
+                    f"Price: {money(price)}",
+                ]
+            )
+        lines.extend(["", f"Selected-all total: {money(total)}"])
+    else:
+        lines.append("Gasket records are still loading for this model.")
+    return build_pdf([line for raw in lines for line in wrap_pdf_text(raw)])
+
+
+def pdf_filename(product: dict) -> str:
+    name = f"gasket-quote-{product.get('brand') or ''}-{product.get('equipment_model') or ''}.pdf"
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "gasket-quote.pdf"
+
+
 def page(title: str, body: str) -> bytes:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -986,30 +1138,44 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
     plate_html = f"<img class='plate' src='{esc(upload_url)}' alt='Uploaded nameplate'>" if upload_url else "<div class='plate muted'>Nameplate photo</div>"
 
     rows = []
-    primary_item = quote_items[0] if quote_items else None
-    if pending_new_product and not primary_item:
+    item_by_key = {str(item.get("door_position") or ""): item for item in quote_items}
+    used_item_ids: set[str] = set()
+    if pending_new_product and not quote_items:
         rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
 
     for index, position in enumerate(positions or door_positions_for_count(quantity), start=1):
-        item = primary_item
         door_label = position.get("label") or f"Door {index}"
         door_key = position.get("key") or f"door_{index}"
+        item = item_by_key.get(str(door_key))
+        if not item and len(quote_items) == len(positions or []):
+            item = quote_items[index - 1]
         if not item:
             rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{esc(door_label)} Gasket</strong></div><div class="price"><strong>Loading</strong></div><div><small class="muted">Door</small><br><strong>{esc(door_key)}</strong></div></div>""")
             continue
+        used_item_ids.add(str(item.get("id") or id(item)))
         price = float(item.get("final_price_usd") or 0)
         line_price = price
         image = item.get("gasket_image_url")
         image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<div class='muted'>No gasket image</div>"
         dims = customer_gasket_size(item)
         rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{line_price}" checked>{image_html}<div><strong>{esc(door_label)} Gasket</strong><p>{esc(dims)}</p></div><div class="price"><strong>{money(line_price)}</strong><small>each selected door</small></div><div></div></label>""")
+    for item in quote_items:
+        item_id = str(item.get("id") or id(item))
+        if item_id in used_item_ids:
+            continue
+        door_key = str(item.get("door_position") or f"gasket_{item_id}")
+        door_label = item.get("door_position_display") or door_key
+        price = float(item.get("final_price_usd") or 0)
+        image = item.get("gasket_image_url")
+        image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<div class='muted'>No gasket image</div>"
+        rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)} Gasket</strong><p>{esc(customer_gasket_size(item))}</p></div><div class="price"><strong>{money(price)}</strong><small>each selected door</small></div><div></div></label>""")
 
     summary_html = "" if pending_new_product else f"""<div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
     rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
     return page("Matched Gasket Quote", f"""
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-<section><h2>Gasket quote</h2><form method="post" action="/checkout"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><p><button type="submit">Checkout selected gaskets</button></p></form></section>""")
+<section><h2>Gasket quote</h2><form method="post" action="/checkout"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><p><button type="submit">Checkout selected gaskets</button> <a class="button" href="/quote-pdf?product_id={esc(product['id'])}">Download PDF</a></p></form></section>""")
 
 
 def render_evidence_package(package: dict) -> str:
@@ -1154,6 +1320,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def send_pdf(self, data: bytes, filename: str, status: int = HTTPStatus.OK) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def redirect(self, location: str, cookie: str | None = None) -> None:
         self.send_response(HTTPStatus.SEE_OTHER)
         self.send_header("Location", location)
@@ -1220,6 +1394,17 @@ class Handler(BaseHTTPRequestHandler):
                     product["door_positions"] = positions
                     product["door_count"] = len(positions)
                 self.send_html(render_result(product, get_quote_items(client, product_id), None, None))
+            return
+        if parsed.path == "/quote-pdf":
+            product_id = int(parse_qs(parsed.query).get("product_id", ["0"])[0] or "0")
+            with httpx.Client(timeout=30) as client:
+                product = get_product(client, product_id) if product_id else None
+                if not product:
+                    self.send_html(page("Product Not Found", "<section><h2>Product not found</h2><p><a class='button' href='/'>Start a new match</a></p></section>"), HTTPStatus.NOT_FOUND)
+                    return
+                quote_items = get_quote_items(client, product_id)
+                request = get_latest_request_for_product(client, product_id)
+            self.send_pdf(render_quote_pdf(product, quote_items, request), pdf_filename(product))
             return
         if parsed.path == "/product-status":
             product_id = int(parse_qs(parsed.query).get("product_id", ["0"])[0])
@@ -1309,11 +1494,14 @@ class Handler(BaseHTTPRequestHandler):
             if not product:
                 product = create_product_from_confirmed_model(client, brand, model)
             try:
-                from instant_enrichment import start_instant_enrichment, upsert_known_product_from_nameplate, wait_for_core_result
+                from instant_enrichment import start_instant_enrichment, upsert_known_product_from_nameplate, wait_for_customer_result
 
                 product = upsert_known_product_from_nameplate(client, brand, model, nameplate_data, status="customer_confirmed")
                 start_instant_enrichment(product["id"], nameplate_data)
-                waited = wait_for_core_result(product["id"], max_seconds=10)
+                waited = wait_for_customer_result(
+                    product["id"],
+                    max_seconds=float(os.getenv("CUSTOMER_ENRICH_WAIT_SECONDS", "25")),
+                )
                 if waited.get("product"):
                     product = waited["product"]
             except Exception as exc:
