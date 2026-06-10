@@ -238,20 +238,32 @@ main{max-width:none;padding:0}
         rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
         return g["page"]("Matched Gasket Quote", f"""
 <style>
-.checkout-actions{{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:14px;align-items:end;margin-top:18px}}
-.checkout-actions label{{margin:0}}
-.checkout-actions input{{min-height:40px}}
+.checkout-actions{{display:grid;grid-template-columns:minmax(360px,1fr) auto;gap:14px;align-items:end;margin-top:18px}}
+.email-capture{{display:flex;gap:10px;align-items:end;flex-wrap:wrap}}
+.email-capture label{{margin:0;flex:0 1 320px}}
+.email-capture input{{min-height:40px;max-width:320px}}
+.email-confirm{{background:#eef3f6;color:#17202a;border:1px solid #dbe2ea;box-shadow:none}}
+.email-status{{font-size:13px;color:#0a6f78;margin-top:6px;display:none}}
 .shopify-panel{{display:none;margin-top:16px;border:1px solid #c9e7ea;background:#eefbfc;border-radius:8px;padding:16px}}
 .shopify-panel.is-open{{display:block}}
 .shopify-panel strong{{display:block;font-size:18px;margin-bottom:6px;color:#0f1d24}}
 .shopify-panel .button{{margin-top:8px}}
 .checkout-error{{display:none;margin-top:12px;border:1px solid #f2b8b5;background:#fff1f0;color:#5f1410;border-radius:8px;padding:12px}}
-@media(max-width:760px){{.checkout-actions{{grid-template-columns:1fr}}}}
+@media(max-width:760px){{.checkout-actions{{grid-template-columns:1fr}}.email-capture{{display:block}}.email-capture label,.email-capture input{{max-width:none;width:100%}}.email-confirm{{margin-top:10px;width:100%;justify-content:center}}}}
 </style>
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div>{product_facts}</section>
-<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="checkout-actions"><label>Email for order details<input type="email" name="customer_email" placeholder="Enter your email to save the transaction details"></label><button type="submit">Purchase selected gaskets</button></div><p><a class="button" href="/quote-pdf?product_id={esc(product['id'])}">Download PDF</a></p><div class="checkout-error" data-checkout-error></div><div class="shopify-panel" data-shopify-panel><strong>Secure checkout is ready</strong><span class="muted">Your selected gasket details are attached to the Shopify checkout.</span><br><a class="button" data-shopify-link href="#" target="_blank" rel="noopener">Continue to payment</a></div></form></section>
+<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="checkout-actions"><div><div class="email-capture"><label>Email for order details<input type="email" name="customer_email" placeholder="your@email.com"></label><button class="email-confirm" type="button" data-email-confirm>Confirm email</button></div><div class="email-status" data-email-status>Email confirmed. Order details will be attached to checkout.</div></div><button type="submit">Purchase selected gaskets</button></div><p><a class="button" href="/quote-pdf?product_id={esc(product['id'])}">Download PDF</a></p><div class="checkout-error" data-checkout-error></div><div class="shopify-panel" data-shopify-panel><strong>Secure checkout is ready</strong><span class="muted">Your selected gasket details are attached to the Shopify checkout.</span><br><a class="button" data-shopify-link href="#" target="_blank" rel="noopener">Continue to payment</a></div></form></section>
 <script>
+document.querySelectorAll('[data-email-confirm]').forEach(button=>button.addEventListener('click',()=>{{
+  const form=button.closest('form');
+  const input=form?.querySelector('input[name="customer_email"]');
+  const status=form?.querySelector('[data-email-status]');
+  if(!input)return;
+  if(!input.value.trim()){{input.focus();input.reportValidity?.();return;}}
+  if(!input.checkValidity()){{input.reportValidity?.();return;}}
+  if(status){{status.style.display='block';status.textContent='Email confirmed. Order details will be attached to checkout.';}}
+}}));
 document.querySelectorAll('.checkout-form').forEach(form=>form.addEventListener('submit',async event=>{{
   if(!window.fetch)return;
   event.preventDefault();
