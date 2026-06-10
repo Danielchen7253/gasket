@@ -95,9 +95,40 @@ Automatic reading is unavailable right now. The uploaded photo is saved; enter t
 
     def patched_render_home(message=""):
         warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
-        from homepage_template import render_premium_home
-
-        return render_premium_home(g["page"], esc, warning)
+        upload_style = """
+<style>
+main{max-width:none;padding:0}
+.work-zone{max-width:1180px;margin:0 auto}
+.work-shell{background:#eef3f6;padding:34px 22px 38px}
+.work-zone{display:flex;justify-content:center;align-items:flex-start}
+.work-panel{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
+.home-form{width:min(760px,100%);background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:28px;margin:0}
+.model-confirm-input{border:2px solid #d93025!important;background:#fffafa!important;box-shadow:0 0 0 3px rgba(217,48,37,.12)}
+.model-check-notice{margin-top:8px;border:2px solid #d93025;background:#fff1f0;color:#5f1410;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}
+.model-check-notice strong{display:block;margin-bottom:4px;color:#3b0906}
+.image-open{display:block;width:100%;padding:0;border:0;background:transparent;cursor:zoom-in}
+.image-viewer{position:fixed;inset:0;background:rgba(7,16,22,.88);display:none;z-index:9999}
+.image-viewer.is-open{display:block}
+.image-viewer-tools{position:absolute;top:18px;right:18px;display:flex;gap:8px;z-index:2}
+.image-viewer-tools button{min-width:44px;background:#fff;color:#0f1d24;border-radius:6px}
+.image-viewer-stage{height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:grab}
+.image-viewer-stage:active{cursor:grabbing}
+.image-viewer-stage img{max-width:none;max-height:none;transform-origin:center center;user-select:none;pointer-events:none}
+.upload-working{margin-top:14px;border:1px solid #c9e7ea;background:#eefbfc;color:#0f1d24;border-radius:8px;padding:12px;line-height:1.45}
+.upload-working span{color:#687385}
+.upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:26px}
+.upload-row button{width:auto;white-space:nowrap}
+.home-form .grid{grid-template-columns:1fr 1fr;margin-top:8px}
+@media(max-width:900px){.work-zone{grid-template-columns:1fr}.home-form .grid{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr}.upload-row button{width:100%;justify-content:center;text-align:center}}
+</style>"""
+        return g["page"]("Gasket Match", f"""
+{upload_style}
+<div class="work-shell"><section class="work-zone">
+<form id="upload" class="home-form" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
+<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div></div>
+<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div></form>
+</section></div>
+""")
 
     def evidence_html(package):
         if not package:

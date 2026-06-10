@@ -147,9 +147,25 @@ def _install_patch(g):
 
     def patched_render_home(message=""):
         warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
-        from homepage_template import render_premium_home
-
-        return render_premium_home(g["page"], esc, warning)
+        upload_style = """
+<style>
+main{max-width:none;padding:0}
+.work-zone{max-width:1180px;margin:0 auto;display:flex;justify-content:center;align-items:flex-start}
+.work-shell{background:#eef3f6;padding:34px 22px 38px}
+.home-form{background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
+.upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}
+.upload-row button{width:auto;white-space:nowrap}
+.home-form .grid{grid-template-columns:1fr 1fr;margin-top:12px}
+@media(max-width:900px){.home-form .grid{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr}.upload-row button{width:100%;justify-content:center;text-align:center}}
+</style>"""
+        return g["page"]("Gasket Match", f"""
+{upload_style}
+<div class="work-shell"><section class="work-zone">
+<form id="upload" class="home-form" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
+<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>
+<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div></div>
+<p class="muted">If the photo is hard to read, type the brand or model here before submitting.</p></form>
+</section></div>""")
 
     def patched_render_result(product, quote_items, request, upload_url):
         nameplate_data = (request or {}).get("nameplate_data") or {}
