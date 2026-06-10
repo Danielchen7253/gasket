@@ -237,9 +237,47 @@ main{max-width:none;padding:0}
         summary_html = "" if pending_new else f"""<div class="summary"><div class="metric"><span>Door positions</span><strong>{len(quote_items)}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
         rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
         return g["page"]("Matched Gasket Quote", f"""
+<style>
+.checkout-actions{{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:14px;align-items:end;margin-top:18px}}
+.checkout-actions label{{margin:0}}
+.checkout-actions input{{min-height:40px}}
+.shopify-panel{{display:none;margin-top:16px;border:1px solid #c9e7ea;background:#eefbfc;border-radius:8px;padding:16px}}
+.shopify-panel.is-open{{display:block}}
+.shopify-panel strong{{display:block;font-size:18px;margin-bottom:6px;color:#0f1d24}}
+.shopify-panel .button{{margin-top:8px}}
+.checkout-error{{display:none;margin-top:12px;border:1px solid #f2b8b5;background:#fff1f0;color:#5f1410;border-radius:8px;padding:12px}}
+@media(max-width:760px){{.checkout-actions{{grid-template-columns:1fr}}}}
+</style>
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div>{product_facts}</section>
-<section><h2>Gasket quote</h2><form method="post" action="/checkout"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><p><button type="submit">Checkout selected gaskets</button></p></form></section>""")
+<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="checkout-actions"><label>Email for order details<input type="email" name="customer_email" placeholder="Enter your email to save the transaction details"></label><button type="submit">Purchase selected gaskets</button></div><p><a class="button" href="/quote-pdf?product_id={esc(product['id'])}">Download PDF</a></p><div class="checkout-error" data-checkout-error></div><div class="shopify-panel" data-shopify-panel><strong>Secure checkout is ready</strong><span class="muted">Your selected gasket details are attached to the Shopify checkout.</span><br><a class="button" data-shopify-link href="#" target="_blank" rel="noopener">Continue to payment</a></div></form></section>
+<script>
+document.querySelectorAll('.checkout-form').forEach(form=>form.addEventListener('submit',async event=>{{
+  if(!window.fetch)return;
+  event.preventDefault();
+  const button=form.querySelector('button[type="submit"]');
+  const panel=form.querySelector('[data-shopify-panel]');
+  const link=form.querySelector('[data-shopify-link]');
+  const errorBox=form.querySelector('[data-checkout-error]');
+  if(errorBox){{errorBox.style.display='none';errorBox.textContent='';}}
+  if(panel)panel.classList.remove('is-open');
+  if(button){{button.disabled=true;button.textContent='Preparing checkout...';}}
+  try{{
+    const data=new FormData(form);
+    data.set('ajax','1');
+    const response=await fetch('/checkout',{{method:'POST',body:data,headers:{{'X-Requested-With':'fetch'}}}});
+    const payload=await response.json();
+    if(!response.ok||!payload.ok)throw new Error(payload.error||'Checkout is not ready.');
+    if(link)link.href=payload.checkout_url;
+    if(panel)panel.classList.add('is-open');
+    panel?.scrollIntoView({{behavior:'smooth',block:'center'}});
+  }}catch(error){{
+    if(errorBox){{errorBox.textContent=error.message;errorBox.style.display='block';}}
+  }}finally{{
+    if(button){{button.disabled=false;button.textContent='Purchase selected gaskets';}}
+  }}
+}}));
+</script>""")
 
     def patched_do_POST(self):
         path = g["urlparse"](self.path).path
