@@ -28,6 +28,7 @@ OPENAI_NAMEPLATE_API_KEY = os.getenv("OPENAI_NAMEPLATE_API_KEY", OPENAI_API_KEY)
 OPENAI_NAMEPLATE_MODEL = os.getenv("OPENAI_NAMEPLATE_MODEL", "gpt-4.1-mini")
 SHOPIFY_STORE_DOMAIN = os.getenv("SHOPIFY_STORE_DOMAIN", "").strip()
 SHOPIFY_STOREFRONT_ACCESS_TOKEN = os.getenv("SHOPIFY_STOREFRONT_ACCESS_TOKEN", "").strip()
+SHOPIFY_ADMIN_ACCESS_TOKEN = os.getenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "").strip()
 SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2024-10").strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
 ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", ADMIN_PASSWORD or SUPABASE_SERVICE_ROLE_KEY).strip()
@@ -107,12 +108,84 @@ def shopify_variant_for_quote_item(item: dict) -> str | None:
 
 
 def shopify_ready() -> bool:
-    return bool(SHOPIFY_STORE_DOMAIN and SHOPIFY_STOREFRONT_ACCESS_TOKEN)
+    return bool(SHOPIFY_STORE_DOMAIN and (SHOPIFY_STOREFRONT_ACCESS_TOKEN or SHOPIFY_ADMIN_ACCESS_TOKEN))
+
+
+def quote_item_attributes(product: dict, item: dict) -> list[dict[str, str]]:
+    return [
+        {"key": "Brand", "value": str(product.get("brand") or "")},
+        {"key": "Model", "value": str(product.get("equipment_model") or "")},
+        {"key": "Door position", "value": str(item.get("door_position_display") or item.get("door_position") or "")},
+        {"key": "Size", "value": customer_gasket_size(item)},
+        {"key": "Quoted price", "value": money(item.get("final_price_usd"))},
+        {"key": "Product record ID", "value": str(product.get("id") or "")},
+        {"key": "Door key", "value": str(item.get("door_position") or "")},
+    ]
+
+
+def create_shopify_draft_order(client: httpx.Client, product: dict, quote_items: list[dict], customer_email: str | None = None) -> str:
+    if not SHOPIFY_STORE_DOMAIN or not SHOPIFY_ADMIN_ACCESS_TOKEN:
+        raise ValueError("Shopify Admin API is not configured.")
+    line_items = []
+    for item in quote_items:
+        variant_id = shopify_variant_for_quote_item(item)
+        if not variant_id:
+            raise ValueError(f"Missing Shopify variant for {money(item.get('final_price_usd'))} gasket.")
+        line_items.append(
+            {
+                "variantId": variant_id,
+                "quantity": 1,
+                "customAttributes": quote_item_attributes(product, item),
+            }
+        )
+    mutation = """
+    mutation DraftOrderCreate($input: DraftOrderInput!) {
+      draftOrderCreate(input: $input) {
+        draftOrder { id invoiceUrl }
+        userErrors { field message }
+      }
+    }
+    """
+    endpoint = f"https://{SHOPIFY_STORE_DOMAIN}/admin/api/{SHOPIFY_API_VERSION}/graphql.json"
+    response = client.post(
+        endpoint,
+        headers={
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": SHOPIFY_ADMIN_ACCESS_TOKEN,
+        },
+        json={
+            "query": mutation,
+            "variables": {
+                "input": {
+                    **({"email": customer_email} if customer_email else {}),
+                    "lineItems": line_items,
+                    "customAttributes": [
+                        {"key": "Source", "value": "Gasket nameplate match"},
+                        {"key": "Product record ID", "value": str(product.get("id") or "")},
+                        {"key": "Brand", "value": str(product.get("brand") or "")},
+                        {"key": "Model", "value": str(product.get("equipment_model") or "")},
+                        {"key": "Customer email", "value": str(customer_email or "")},
+                    ],
+                }
+            },
+        },
+    )
+    response.raise_for_status()
+    payload = response.json()
+    errors = payload.get("errors") or payload.get("data", {}).get("draftOrderCreate", {}).get("userErrors") or []
+    if errors:
+        raise ValueError(json.dumps(errors, ensure_ascii=False))
+    invoice_url = payload.get("data", {}).get("draftOrderCreate", {}).get("draftOrder", {}).get("invoiceUrl")
+    if not invoice_url:
+        raise ValueError("Shopify did not return a payment URL.")
+    return invoice_url
 
 
 def create_shopify_cart(client: httpx.Client, product: dict, quote_items: list[dict], customer_email: str | None = None) -> str:
     if not shopify_ready():
         raise ValueError("Shopify is not configured.")
+    if not SHOPIFY_STOREFRONT_ACCESS_TOKEN:
+        return create_shopify_draft_order(client, product, quote_items, customer_email)
     lines = []
     for item in quote_items:
         variant_id = shopify_variant_for_quote_item(item)
@@ -122,15 +195,7 @@ def create_shopify_cart(client: httpx.Client, product: dict, quote_items: list[d
             {
                 "merchandiseId": variant_id,
                 "quantity": 1,
-                "attributes": [
-                    {"key": "Brand", "value": str(product.get("brand") or "")},
-                    {"key": "Model", "value": str(product.get("equipment_model") or "")},
-                    {"key": "Door position", "value": str(item.get("door_position_display") or item.get("door_position") or "")},
-                    {"key": "Size", "value": customer_gasket_size(item)},
-                    {"key": "Quoted price", "value": money(item.get("final_price_usd"))},
-                    {"key": "Product record ID", "value": str(product.get("id") or "")},
-                    {"key": "Door key", "value": str(item.get("door_position") or "")},
-                ],
+                "attributes": quote_item_attributes(product, item),
             }
         )
     mutation = """
