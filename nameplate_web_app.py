@@ -1085,14 +1085,16 @@ def page(title: str, body: str) -> bytes:
 <title>{esc(title)}</title>
 <style>
 body{{margin:0;font-family:Arial,Helvetica,sans-serif;background:#eef3f6;color:#17202a}}
-.app-header{{max-width:1180px;margin:0 auto;padding:14px 22px 0}}
+:root{{--page-max:1180px;--page-pad:22px;--page-shell:1224px}}
+*,*::before,*::after{{box-sizing:border-box}}
+.app-header{{max-width:var(--page-shell);margin:0 auto;padding:14px var(--page-pad) 0}}
 .app-header-inner{{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 22px rgba(15,29,36,.05)}}
 .app-logo{{width:30px;height:30px;border-radius:7px;background:#0a6f78;color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;letter-spacing:.02em;text-decoration:none;flex:0 0 auto}}
 .app-logo:hover{{background:#075e66;color:white}}
 .app-title{{font-size:15px;font-weight:800;color:#17202a;line-height:1.1}}
 .app-subtitle{{font-size:11px;color:#687385;margin-top:2px}}
-main{{max-width:1180px;margin:0 auto;padding:22px}}
-.app-footer{{max-width:1180px;margin:0 auto;padding:0 22px 24px}}
+main{{max-width:var(--page-shell);margin:0 auto;padding:22px var(--page-pad)}}
+.app-footer{{max-width:var(--page-shell);margin:0 auto;padding:0 var(--page-pad) 24px}}
 .app-footer-inner{{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:20px;color:#17202a}}
 .app-footer-inner strong{{display:block;font-size:18px;margin-bottom:4px}}
 section,.checkout{{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:20px;margin-bottom:18px}}
