@@ -627,7 +627,8 @@ def render_checkout_error(message: str, product_id: int | None = None) -> bytes:
 
 def handle_checkout_post(handler, raw_body: bytes) -> None:
     fields = parse_qs(raw_body.decode("utf-8", errors="replace"))
-    product_id = int((fields.get("product_id") or ["0"])[0] or "0")
+    query_fields = parse_qs(urlparse(handler.path).query)
+    product_id = int((fields.get("product_id") or query_fields.get("product_id") or ["0"])[0] or "0")
     selected_positions = fields.get("door_position") or []
     customer_email = ((fields.get("customer_email") or [""])[0] or "").strip()
     wants_json = (fields.get("ajax") or [""])[0] == "1" or handler.headers.get("X-Requested-With") == "fetch"
@@ -1217,7 +1218,7 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
 </style>
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="checkout-actions"><div><div class="email-capture"><label>Email for order details<input type="email" name="customer_email" placeholder="your@email.com"></label><button class="email-confirm" type="button" data-email-confirm>Confirm email</button></div><div class="email-status" data-email-status>Email confirmed. Order details will be attached to checkout.</div></div><button type="submit">Purchase selected gaskets</button></div><p><a class="button" href="/quote-pdf?product_id={esc(product['id'])}">Download PDF</a></p><div class="checkout-error" data-checkout-error></div><div class="shopify-panel" data-shopify-panel><strong>Secure checkout is ready</strong><span class="muted">Your selected gasket details are attached to the Shopify checkout.</span><br><a class="button" data-shopify-link href="#" target="_blank" rel="noopener">Continue to payment</a></div></form></section>
+<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="checkout-actions"><div><div class="email-capture"><label>Email for order details<input type="email" name="customer_email" placeholder="your@email.com"></label><button class="email-confirm" type="button" data-email-confirm>Confirm email</button></div><div class="email-status" data-email-status>Email confirmed. Order details will be attached to checkout.</div></div><button type="submit">Purchase selected gaskets</button></div><p><a class="button" href="/quote-pdf?product_id={esc(product['id'])}">Download PDF</a></p><div class="checkout-error" data-checkout-error></div><div class="shopify-panel" data-shopify-panel><strong>Secure checkout is ready</strong><span class="muted">Your selected gasket details are attached to the Shopify checkout.</span><br><a class="button" data-shopify-link href="#" target="_blank" rel="noopener">Continue to payment</a></div></form></section>
 <script>
 document.querySelectorAll('[data-email-confirm]').forEach(button=>button.addEventListener('click',()=>{{
   const form=button.closest('form');
@@ -1241,6 +1242,7 @@ document.querySelectorAll('.checkout-form').forEach(form=>form.addEventListener(
   try{{
     const data=new FormData(form);
     data.set('ajax','1');
+    if(!data.get('product_id'))data.set('product_id',form.dataset.productId||'');
     const response=await fetch('/checkout',{{method:'POST',body:data,headers:{{'X-Requested-With':'fetch'}}}});
     const payload=await response.json();
     if(!response.ok||!payload.ok)throw new Error(payload.error||'Checkout is not ready.');
