@@ -613,8 +613,9 @@ def get_quote_items(client: httpx.Client, product_id: int) -> list[dict]:
 def selected_quote_items(all_items: list[dict], selected_positions: list[str]) -> list[dict]:
     selected = {value for value in selected_positions if value}
     if not selected:
-        return []
-    return [item for item in all_items if str(item.get("door_position") or "") in selected]
+        return list(all_items)
+    chosen = [item for item in all_items if str(item.get("door_position") or "") in selected]
+    return chosen or list(all_items)
 
 
 def render_checkout_error(message: str, product_id: int | None = None) -> bytes:
