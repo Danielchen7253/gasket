@@ -278,7 +278,7 @@ document.querySelectorAll('.checkout-form').forEach(form=>form.addEventListener(
     const data=new FormData(form);
     data.set('ajax','1');
     if(!data.get('product_id'))data.set('product_id',form.dataset.productId||'');
-    const response=await fetch('/checkout',{{method:'POST',body:data,headers:{{'X-Requested-With':'fetch'}}}});
+    const response=await fetch(form.action,{{method:'POST',body:new URLSearchParams(data),headers:{{'X-Requested-With':'fetch'}}}});
     const payload=await response.json();
     if(!response.ok||!payload.ok)throw new Error(payload.error||'Checkout is not ready.');
     if(link)link.href=payload.checkout_url;
