@@ -98,11 +98,11 @@ Automatic reading is unavailable right now. The uploaded photo is saved; enter t
         upload_style = """
 <style>
 main{max-width:none;padding:0}
-.work-zone{max-width:1180px;margin:0 auto}
+.work-zone{max-width:var(--page-max,1180px);margin:0 auto}
 .work-shell{background:#eef3f6;padding:34px 22px 38px}
 .work-zone{display:flex;justify-content:center;align-items:flex-start}
 .work-panel{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
-.home-form{width:min(760px,100%);background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:28px;margin:0}
+.home-form{width:100%;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:28px;margin:0}
 .model-confirm-input{border:2px solid #d93025!important;background:#fffafa!important;box-shadow:0 0 0 3px rgba(217,48,37,.12)}
 .model-check-notice{margin-top:8px;border:2px solid #d93025;background:#fff1f0;color:#5f1410;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}
 .model-check-notice strong{display:block;margin-bottom:4px;color:#3b0906}

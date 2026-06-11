@@ -150,9 +150,9 @@ def _install_patch(g):
         upload_style = """
 <style>
 main{max-width:none;padding:0}
-.work-zone{max-width:1180px;margin:0 auto;display:flex;justify-content:center;align-items:flex-start}
+.work-zone{max-width:var(--page-max,1180px);margin:0 auto;display:flex;justify-content:center;align-items:flex-start}
 .work-shell{background:#eef3f6;padding:34px 22px 38px}
-.home-form{background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
+.home-form{width:100%;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
 .upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}
 .upload-row button{width:auto;white-space:nowrap}
 .home-form .grid{grid-template-columns:1fr 1fr;margin-top:12px}
