@@ -249,7 +249,7 @@ main{max-width:none;padding:0}
 </style>
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div>{product_facts}</section>
-<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="shipping-panel" data-shipping-panel><h3>Shipping information</h3><div class="shipping-grid"><label>Email<input data-required-check type="email" name="customer_email" autocomplete="email"></label><label>Name<input data-required-check name="customer_name" autocomplete="name"></label><label>Phone<input data-required-check name="customer_phone" autocomplete="tel"></label><label class="wide">Shipping address<input data-required-check name="shipping_address1" autocomplete="shipping address-line1"></label><label>Apt / Suite<input name="shipping_address2" autocomplete="shipping address-line2"></label><label>City<input data-required-check name="shipping_city" autocomplete="shipping address-level2"></label><label>State<input data-required-check name="shipping_state" autocomplete="shipping address-level1"></label><label>ZIP code<input data-required-check name="shipping_zip" autocomplete="shipping postal-code"></label><label>Country<input data-required-check name="shipping_country" value="United States" autocomplete="shipping country"></label></div></div><div class="checkout-actions"><button type="submit" data-checkout-button>Purchase selected gaskets</button></div><div class="checkout-error" data-checkout-error></div></form></section>
+<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="shipping-panel" data-shipping-panel><h3>Shipping information</h3><div class="shipping-grid"><label>Name<input data-required-check name="customer_name" autocomplete="name"></label><label>Phone<input data-required-check name="customer_phone" autocomplete="tel"></label><label>Email<input data-required-check type="email" name="customer_email" autocomplete="email"></label><label class="wide">Shipping address<input data-required-check data-address-autocomplete name="shipping_address1" placeholder="755 International Blvd, 107, Houston, TX 77024" autocomplete="shipping street-address"></label><input type="hidden" name="shipping_address2" data-address-line2><input type="hidden" name="shipping_city" data-address-city><input type="hidden" name="shipping_state" data-address-state><input type="hidden" name="shipping_zip" data-address-zip><input type="hidden" name="shipping_country" value="United States" data-address-country></div></div><div class="checkout-actions"><button type="submit" data-checkout-button>Purchase selected gaskets</button></div><div class="checkout-error" data-checkout-error></div></form></section>
 <script>
 document.querySelectorAll('.checkout-form').forEach(form=>form.addEventListener('submit',async event=>{{
   if(!window.fetch)return;
@@ -286,7 +286,29 @@ document.querySelectorAll('.checkout-form').forEach(form=>form.addEventListener(
     if(button){{button.disabled=false;button.textContent='Purchase selected gaskets';}}
   }}
 }}));
-</script>""")
+window.initShippingAutocomplete=function(){{
+  if(!window.google?.maps?.places)return;
+  document.querySelectorAll('[data-address-autocomplete]').forEach(input=>{{
+    const form=input.closest('form');
+    const autocomplete=new google.maps.places.Autocomplete(input,{{types:['address'],componentRestrictions:{{country:['us']}},fields:['address_components','formatted_address']}});
+    autocomplete.addListener('place_changed',()=>{{
+      const place=autocomplete.getPlace();
+      const parts={{street_number:'',route:'',subpremise:'',locality:'',administrative_area_level_1:'',postal_code:'',country:''}};
+      (place.address_components||[]).forEach(component=>{{
+        component.types.forEach(type=>{{if(type in parts)parts[type]=type==='administrative_area_level_1'?component.short_name:component.long_name;}});
+      }});
+      const street=[parts.street_number,parts.route].filter(Boolean).join(' ');
+      const line2=parts.subpremise?('Unit '+parts.subpremise):'';
+      input.value=place.formatted_address||[street,line2,parts.locality,parts.administrative_area_level_1,parts.postal_code].filter(Boolean).join(', ');
+      form.querySelector('[data-address-line2]').value=line2;
+      form.querySelector('[data-address-city]').value=parts.locality;
+      form.querySelector('[data-address-state]').value=parts.administrative_area_level_1;
+      form.querySelector('[data-address-zip]').value=parts.postal_code;
+      form.querySelector('[data-address-country]').value=parts.country||'United States';
+    }});
+  }});
+}};
+</script>{g["google_places_loader"]() if "google_places_loader" in g else ""}""")
 
     def patched_do_POST(self):
         path = g["urlparse"](self.path).path

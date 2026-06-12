@@ -14,6 +14,8 @@ services:
         sync: false
       - key: GOOGLE_CSE_ID
         sync: false
+      - key: GOOGLE_PLACES_BROWSER_KEY
+        sync: false
       - key: SHOPIFY_STORE_DOMAIN
         sync: false
       - key: SHOPIFY_STOREFRONT_ACCESS_TOKEN
