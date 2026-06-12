@@ -123,9 +123,53 @@ def quote_item_attributes(product: dict, item: dict) -> list[dict[str, str]]:
     ]
 
 
-def create_shopify_draft_order(client: httpx.Client, product: dict, quote_items: list[dict], customer_email: str | None = None) -> str:
+def split_customer_name(full_name: str) -> tuple[str, str]:
+    parts = (full_name or "").strip().split()
+    if not parts:
+        return "", ""
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], " ".join(parts[1:])
+
+
+def shipping_attributes(customer_info: dict | None) -> list[dict]:
+    info = customer_info or {}
+    labels = {
+        "customer_email": "Customer email",
+        "customer_name": "Customer name",
+        "customer_phone": "Customer phone",
+        "shipping_address1": "Shipping address",
+        "shipping_address2": "Shipping address 2",
+        "shipping_city": "Shipping city",
+        "shipping_state": "Shipping state",
+        "shipping_zip": "Shipping ZIP",
+        "shipping_country": "Shipping country",
+    }
+    return [{"key": label, "value": str(info.get(key) or "")} for key, label in labels.items()]
+
+
+def shopify_shipping_address(customer_info: dict | None) -> dict:
+    info = customer_info or {}
+    first_name, last_name = split_customer_name(str(info.get("customer_name") or ""))
+    address = {
+        "firstName": first_name,
+        "lastName": last_name,
+        "phone": str(info.get("customer_phone") or ""),
+        "address1": str(info.get("shipping_address1") or ""),
+        "address2": str(info.get("shipping_address2") or ""),
+        "city": str(info.get("shipping_city") or ""),
+        "province": str(info.get("shipping_state") or ""),
+        "zip": str(info.get("shipping_zip") or ""),
+        "country": str(info.get("shipping_country") or "United States"),
+    }
+    return {key: value for key, value in address.items() if value}
+
+
+def create_shopify_draft_order(client: httpx.Client, product: dict, quote_items: list[dict], customer_info: dict | None = None) -> str:
     if not SHOPIFY_STORE_DOMAIN or not SHOPIFY_ADMIN_ACCESS_TOKEN:
         raise ValueError("Shopify Admin API is not configured.")
+    customer_email = str((customer_info or {}).get("customer_email") or "").strip()
+    shipping_address = shopify_shipping_address(customer_info)
     line_items = []
     for item in quote_items:
         variant_id = shopify_variant_for_quote_item(item)
@@ -158,14 +202,14 @@ def create_shopify_draft_order(client: httpx.Client, product: dict, quote_items:
             "variables": {
                 "input": {
                     **({"email": customer_email} if customer_email else {}),
+                    **({"shippingAddress": shipping_address} if shipping_address else {}),
                     "lineItems": line_items,
                     "customAttributes": [
                         {"key": "Source", "value": "Gasket nameplate match"},
                         {"key": "Product record ID", "value": str(product.get("id") or "")},
                         {"key": "Brand", "value": str(product.get("brand") or "")},
                         {"key": "Model", "value": str(product.get("equipment_model") or "")},
-                        {"key": "Customer email", "value": str(customer_email or "")},
-                    ],
+                    ] + shipping_attributes(customer_info),
                 }
             },
         },
@@ -181,11 +225,13 @@ def create_shopify_draft_order(client: httpx.Client, product: dict, quote_items:
     return invoice_url
 
 
-def create_shopify_cart(client: httpx.Client, product: dict, quote_items: list[dict], customer_email: str | None = None) -> str:
+def create_shopify_cart(client: httpx.Client, product: dict, quote_items: list[dict], customer_info: dict | None = None) -> str:
     if not shopify_ready():
         raise ValueError("Shopify is not configured.")
+    customer_email = str((customer_info or {}).get("customer_email") or "").strip()
+    customer_phone = str((customer_info or {}).get("customer_phone") or "").strip()
     if not SHOPIFY_STOREFRONT_ACCESS_TOKEN:
-        return create_shopify_draft_order(client, product, quote_items, customer_email)
+        return create_shopify_draft_order(client, product, quote_items, customer_info)
     lines = []
     for item in quote_items:
         variant_id = shopify_variant_for_quote_item(item)
@@ -218,14 +264,13 @@ def create_shopify_cart(client: httpx.Client, product: dict, quote_items: list[d
             "variables": {
                 "input": {
                     "lines": lines,
-                    **({"buyerIdentity": {"email": customer_email}} if customer_email else {}),
+                    **({"buyerIdentity": {**({"email": customer_email} if customer_email else {}), **({"phone": customer_phone} if customer_phone else {})}} if (customer_email or customer_phone) else {}),
                     "attributes": [
                         {"key": "Source", "value": "Gasket nameplate match"},
                         {"key": "Product record ID", "value": str(product.get("id") or "")},
                         {"key": "Brand", "value": str(product.get("brand") or "")},
                         {"key": "Model", "value": str(product.get("equipment_model") or "")},
-                        {"key": "Customer email", "value": str(customer_email or "")},
-                    ],
+                    ] + shipping_attributes(customer_info),
                 }
             },
         },
@@ -683,6 +728,35 @@ def selected_quote_items(all_items: list[dict], selected_positions: list[str]) -
     return chosen or list(all_items)
 
 
+def checkout_customer_info(fields: dict[str, list[str]]) -> dict:
+    keys = [
+        "customer_email",
+        "customer_name",
+        "customer_phone",
+        "shipping_address1",
+        "shipping_address2",
+        "shipping_city",
+        "shipping_state",
+        "shipping_zip",
+        "shipping_country",
+    ]
+    return {key: ((fields.get(key) or [""])[0] or "").strip() for key in keys}
+
+
+def missing_checkout_customer_fields(customer_info: dict) -> list[str]:
+    required = {
+        "customer_email": "email",
+        "customer_name": "name",
+        "customer_phone": "phone",
+        "shipping_address1": "shipping address",
+        "shipping_city": "city",
+        "shipping_state": "state",
+        "shipping_zip": "ZIP code",
+        "shipping_country": "country",
+    }
+    return [label for key, label in required.items() if not str(customer_info.get(key) or "").strip()]
+
+
 def render_checkout_error(message: str, product_id: int | None = None) -> bytes:
     back = f"/preview?product_id={product_id}" if product_id else "/"
     return page(
@@ -696,7 +770,8 @@ def handle_checkout_post(handler, raw_body: bytes) -> None:
     query_fields = parse_qs(urlparse(handler.path).query)
     product_id = int((fields.get("product_id") or query_fields.get("product_id") or ["0"])[0] or "0")
     selected_positions = fields.get("door_position") or []
-    customer_email = ((fields.get("customer_email") or [""])[0] or "").strip()
+    customer_info = checkout_customer_info(fields)
+    missing_customer_fields = missing_checkout_customer_fields(customer_info)
     wants_json = (fields.get("ajax") or [""])[0] == "1" or handler.headers.get("X-Requested-With") == "fetch"
 
     def send_checkout_json(status: int, payload: dict) -> None:
@@ -712,6 +787,13 @@ def handle_checkout_post(handler, raw_body: bytes) -> None:
             send_checkout_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Missing product record. Please start the match again."})
             return
         handler.send_html(render_checkout_error("Missing product record. Please start the match again."), HTTPStatus.BAD_REQUEST)
+        return
+    if missing_customer_fields:
+        message = "Please enter " + ", ".join(missing_customer_fields) + " before checkout."
+        if wants_json:
+            send_checkout_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": message, "missing_fields": missing_customer_fields})
+            return
+        handler.send_html(render_checkout_error(message, product_id), HTTPStatus.BAD_REQUEST)
         return
     with httpx.Client(timeout=30) as client:
         product = get_product(client, product_id)
@@ -730,7 +812,7 @@ def handle_checkout_post(handler, raw_body: bytes) -> None:
             handler.send_html(render_checkout_error("Please select at least one gasket before checkout.", product_id), HTTPStatus.BAD_REQUEST)
             return
         try:
-            checkout_url = create_shopify_cart(client, product, chosen, customer_email)
+            checkout_url = create_shopify_cart(client, product, chosen, customer_info)
         except Exception as exc:
             if wants_json:
                 send_checkout_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
@@ -738,7 +820,7 @@ def handle_checkout_post(handler, raw_body: bytes) -> None:
             handler.send_html(render_checkout_error(str(exc), product_id), HTTPStatus.BAD_REQUEST)
             return
     if wants_json:
-        send_checkout_json(HTTPStatus.OK, {"ok": True, "checkout_url": checkout_url, "customer_email": customer_email})
+        send_checkout_json(HTTPStatus.OK, {"ok": True, "checkout_url": checkout_url, "customer_email": customer_info.get("customer_email")})
         return
     handler.redirect(checkout_url)
 
@@ -1274,33 +1356,32 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
     return page("Matched Gasket Quote", f"""
 <style>
 .checkout-actions{{display:grid;grid-template-columns:minmax(360px,1fr) auto;gap:14px;align-items:end;margin-top:18px}}
-.email-capture{{display:flex;gap:10px;align-items:end;flex-wrap:wrap}}
-.email-capture label{{margin:0;flex:0 1 320px}}
-.email-capture input{{min-height:40px;max-width:320px}}
-.email-confirm{{background:#eef3f6;color:#17202a;border:1px solid #dbe2ea;box-shadow:none}}
-.email-status{{font-size:13px;color:#0a6f78;margin-top:6px;display:none}}
+.shipping-panel{{display:none;margin-top:18px;border:1px solid #dbe2ea;background:#fbfdfe;border-radius:8px;padding:16px}}
+.shipping-panel.is-open{{display:block}}
+.shipping-panel h3{{margin-top:0}}
+.shipping-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}}
+.shipping-grid .wide{{grid-column:span 2}}
 .checkout-error{{display:none;margin-top:12px;border:1px solid #f2b8b5;background:#fff1f0;color:#5f1410;border-radius:8px;padding:12px}}
-@media(max-width:760px){{.checkout-actions{{grid-template-columns:1fr}}.email-capture{{display:block}}.email-capture label,.email-capture input{{max-width:none;width:100%}}.email-confirm{{margin-top:10px;width:100%;justify-content:center}}}}
+@media(max-width:760px){{.checkout-actions{{grid-template-columns:1fr}}.shipping-grid{{grid-template-columns:1fr}}.shipping-grid .wide{{grid-column:auto}}}}
 </style>
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="checkout-actions"><div><div class="email-capture"><label>Email for order details<input type="email" name="customer_email" placeholder="your@email.com"></label><button class="email-confirm" type="button" data-email-confirm>Confirm email</button></div><div class="email-status" data-email-status>Email confirmed. Order details will be attached to checkout.</div></div><button type="submit">Purchase selected gaskets</button></div><p><a class="button" href="/quote-pdf?product_id={esc(product['id'])}">Download PDF</a></p><div class="checkout-error" data-checkout-error></div></form></section>
+<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="shipping-panel" data-shipping-panel><h3>Shipping information</h3><div class="shipping-grid"><label>Email<input required type="email" name="customer_email" autocomplete="email"></label><label>Name<input required name="customer_name" autocomplete="name"></label><label>Phone<input required name="customer_phone" autocomplete="tel"></label><label class="wide">Shipping address<input required name="shipping_address1" autocomplete="shipping address-line1"></label><label>Apt / Suite<input name="shipping_address2" autocomplete="shipping address-line2"></label><label>City<input required name="shipping_city" autocomplete="shipping address-level2"></label><label>State<input required name="shipping_state" autocomplete="shipping address-level1"></label><label>ZIP code<input required name="shipping_zip" autocomplete="shipping postal-code"></label><label>Country<input required name="shipping_country" value="United States" autocomplete="shipping country"></label></div></div><div class="checkout-actions"><div><p class="muted">No account required. Shipping details are collected only when you are ready to pay.</p></div><button type="submit" data-checkout-button>Purchase selected gaskets</button></div><p><a class="button" href="/quote-pdf?product_id={esc(product['id'])}">Download PDF</a></p><div class="checkout-error" data-checkout-error></div></form></section>
 <script>
-document.querySelectorAll('[data-email-confirm]').forEach(button=>button.addEventListener('click',()=>{{
-  const form=button.closest('form');
-  const input=form?.querySelector('input[name="customer_email"]');
-  const status=form?.querySelector('[data-email-status]');
-  if(!input)return;
-  if(!input.value.trim()){{input.focus();input.reportValidity?.();return;}}
-  if(!input.checkValidity()){{input.reportValidity?.();return;}}
-  if(status){{status.style.display='block';status.textContent='Email confirmed. Order details will be attached to checkout.';}}
-}}));
 document.querySelectorAll('.checkout-form').forEach(form=>form.addEventListener('submit',async event=>{{
   if(!window.fetch)return;
   event.preventDefault();
   const button=form.querySelector('button[type="submit"]');
+  const shippingPanel=form.querySelector('[data-shipping-panel]');
   const errorBox=form.querySelector('[data-checkout-error]');
   if(errorBox){{errorBox.style.display='none';errorBox.textContent='';}}
+  if(shippingPanel&&!shippingPanel.classList.contains('is-open')){{
+    shippingPanel.classList.add('is-open');
+    if(button)button.textContent='Continue to payment';
+    shippingPanel.scrollIntoView({{behavior:'smooth',block:'center'}});
+    return;
+  }}
+  if(!form.reportValidity())return;
   if(button){{button.disabled=true;button.textContent='Preparing checkout...';}}
   try{{
     const data=new FormData(form);
