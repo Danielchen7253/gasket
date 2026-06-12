@@ -1355,32 +1355,48 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
     rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
     return page("Matched Gasket Quote", f"""
 <style>
-.checkout-actions{{display:grid;grid-template-columns:minmax(360px,1fr) auto;gap:14px;align-items:end;margin-top:18px}}
-.shipping-panel{{display:none;margin-top:18px;border:1px solid #dbe2ea;background:#fbfdfe;border-radius:8px;padding:16px}}
-.shipping-panel.is-open{{display:block}}
-.shipping-panel h3{{margin-top:0}}
-.shipping-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}}
-.shipping-grid .wide{{grid-column:span 2}}
-.checkout-error{{display:none;margin-top:12px;border:1px solid #f2b8b5;background:#fff1f0;color:#5f1410;border-radius:8px;padding:12px}}
-@media(max-width:760px){{.checkout-actions{{grid-template-columns:1fr}}.shipping-grid{{grid-template-columns:1fr}}.shipping-grid .wide{{grid-column:auto}}}}
+.order-actions{{display:flex;justify-content:flex-end;margin-top:18px}}
+@media(max-width:760px){{.order-actions{{display:block}}.order-actions button{{width:100%;justify-content:center}}}}
 </style>
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="shipping-panel" data-shipping-panel><h3>Shipping information</h3><div class="shipping-grid"><label>Email<input data-required-check type="email" name="customer_email" autocomplete="email"></label><label>Name<input data-required-check name="customer_name" autocomplete="name"></label><label>Phone<input data-required-check name="customer_phone" autocomplete="tel"></label><label class="wide">Shipping address<input data-required-check name="shipping_address1" autocomplete="shipping address-line1"></label><label>Apt / Suite<input name="shipping_address2" autocomplete="shipping address-line2"></label><label>City<input data-required-check name="shipping_city" autocomplete="shipping address-level2"></label><label>State<input data-required-check name="shipping_state" autocomplete="shipping address-level1"></label><label>ZIP code<input data-required-check name="shipping_zip" autocomplete="shipping postal-code"></label><label>Country<input data-required-check name="shipping_country" value="United States" autocomplete="shipping country"></label></div></div><div class="checkout-actions"><div></div><button type="submit" data-checkout-button>Purchase selected gaskets</button></div><div class="checkout-error" data-checkout-error></div></form></section>
+<section><h2>Gasket quote</h2><form method="get" action="/order"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="order-actions"><button type="submit">Purchase selected gaskets</button></div></form></section>""")
+
+
+def render_order_page(product: dict, quote_items: list[dict], selected_positions: list[str]) -> bytes:
+    chosen = selected_quote_items(quote_items, selected_positions)
+    rows = []
+    hidden_positions = []
+    total = 0.0
+    for item in chosen:
+        door_key = str(item.get("door_position") or "")
+        if door_key:
+            hidden_positions.append(f"""<input type="hidden" name="door_position" value="{esc(door_key)}">""")
+        door_label = item.get("door_position_display") or door_key or "Gasket"
+        price = float(item.get("final_price_usd") or 0)
+        total += price
+        rows.append(
+            f"""<div class="item"><div></div><div class="muted">Gasket</div><div><strong>{esc(door_label)}</strong><p>{esc(customer_gasket_size(item))}</p></div><div class="price"><strong>{money(price)}</strong></div><div></div></div>"""
+        )
+    if not rows:
+        rows.append("<p class='muted'>No selected gasket records are ready yet.</p>")
+    return page("Shipping Information", f"""
+<style>
+.shipping-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}}
+.shipping-grid .wide{{grid-column:span 2}}
+.checkout-actions{{display:flex;justify-content:flex-end;margin-top:18px}}
+.checkout-error{{display:none;margin-top:12px;border:1px solid #f2b8b5;background:#fff1f0;color:#5f1410;border-radius:8px;padding:12px}}
+@media(max-width:760px){{.shipping-grid{{grid-template-columns:1fr}}.shipping-grid .wide{{grid-column:auto}}.checkout-actions{{display:block}}.checkout-actions button{{width:100%;justify-content:center}}}}
+</style>
+<section><h2>Order summary</h2><div class="facts"><div>Brand</div><div><strong>{esc(product.get('brand') or '')}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model') or '')}</strong></div><div>Total</div><div><strong>{money(total)}</strong></div></div><div style="margin-top:16px">{''.join(rows)}</div></section>
+<section><h2>Shipping information</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}">{''.join(hidden_positions)}<div class="shipping-grid"><label>Email<input data-required-check type="email" name="customer_email" autocomplete="email"></label><label>Name<input data-required-check name="customer_name" autocomplete="name"></label><label>Phone<input data-required-check name="customer_phone" autocomplete="tel"></label><label class="wide">Shipping address<input data-required-check name="shipping_address1" autocomplete="shipping address-line1"></label><label>Apt / Suite<input name="shipping_address2" autocomplete="shipping address-line2"></label><label>City<input data-required-check name="shipping_city" autocomplete="shipping address-level2"></label><label>State<input data-required-check name="shipping_state" autocomplete="shipping address-level1"></label><label>ZIP code<input data-required-check name="shipping_zip" autocomplete="shipping postal-code"></label><label>Country<input data-required-check name="shipping_country" value="United States" autocomplete="shipping country"></label></div><div class="checkout-actions"><button type="submit">Continue to payment</button></div><div class="checkout-error" data-checkout-error></div></form></section>
 <script>
 document.querySelectorAll('.checkout-form').forEach(form=>form.addEventListener('submit',async event=>{{
   if(!window.fetch)return;
   event.preventDefault();
   const button=form.querySelector('button[type="submit"]');
-  const shippingPanel=form.querySelector('[data-shipping-panel]');
   const errorBox=form.querySelector('[data-checkout-error]');
   if(errorBox){{errorBox.style.display='none';errorBox.textContent='';}}
-  if(shippingPanel&&!shippingPanel.classList.contains('is-open')){{
-    shippingPanel.classList.add('is-open');
-    if(button)button.textContent='Continue to payment';
-    shippingPanel.scrollIntoView({{behavior:'smooth',block:'center'}});
-    return;
-  }}
   const missing=[...form.querySelectorAll('[data-required-check]')].find(input=>!input.value.trim()||!input.checkValidity());
   if(missing){{
     missing.focus();
@@ -1400,7 +1416,7 @@ document.querySelectorAll('.checkout-form').forEach(form=>form.addEventListener(
   }}catch(error){{
     if(errorBox){{errorBox.textContent=error.message;errorBox.style.display='block';}}
   }}finally{{
-    if(button){{button.disabled=false;button.textContent='Purchase selected gaskets';}}
+    if(button){{button.disabled=false;button.textContent='Continue to payment';}}
   }}
 }}));
 </script>""")
@@ -1622,6 +1638,17 @@ class Handler(BaseHTTPRequestHandler):
                     product["door_positions"] = positions
                     product["door_count"] = len(positions)
                 self.send_html(render_result(product, get_quote_items(client, product_id), None, None))
+            return
+        if parsed.path == "/order":
+            query = parse_qs(parsed.query)
+            product_id = int(query.get("product_id", ["0"])[0] or "0")
+            selected_positions = query.get("door_position") or []
+            with httpx.Client(timeout=30) as client:
+                product = get_product(client, product_id) if product_id else None
+                if not product:
+                    self.send_html(page("Product Not Found", "<section><h2>Product not found</h2><p class='muted'>Please start from the matched product page.</p><p><a class='button' href='/'>Start a new match</a></p></section>"), HTTPStatus.NOT_FOUND)
+                    return
+                self.send_html(render_order_page(product, get_quote_items(client, product_id), selected_positions))
             return
         if parsed.path == "/quote-pdf":
             product_id = int(parse_qs(parsed.query).get("product_id", ["0"])[0] or "0")
