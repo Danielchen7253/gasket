@@ -1682,8 +1682,12 @@ def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
                 selected,
             ]
         ).lower()
+        payment_status = str(order.get("payment_status") or "").lower()
+        order_status = str(order.get("order_status") or "").lower()
+        is_paid = payment_status in {"paid", "complete", "completed", "success", "succeeded"}
+        is_confirmed = order_status in {"confirmed", "verified", "approved", "ready", "production_ready"}
         rows.append(
-            f"""<tr data-order-row data-search="{esc(search_blob)}">
+            f"""<tr data-order-row data-search="{esc(search_blob)}" data-payment="{'paid' if is_paid else 'unpaid'}" data-confirmation="{'confirmed' if is_confirmed else 'unconfirmed'}" data-created="{esc(order.get('created_at'))}">
 <td><a href="/ADMIN?order_id={esc(order.get('id'))}">#{esc(order.get('id'))}</a><br><span class="muted">{esc(short_datetime(order.get('created_at')))}</span></td>
 <td><strong>{esc(order.get('customer_name'))}</strong><br>{esc(order.get('customer_phone'))}<br>{esc(order.get('customer_email'))}</td>
 <td><strong>{esc(order.get('brand'))}</strong><br>{esc(order.get('equipment_model'))}</td>
@@ -1709,6 +1713,11 @@ def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
 .admin-filter-body{{border-top:1px solid #e7edf3;padding:14px;display:grid;gap:8px;max-width:520px}}
 .admin-filter-body label{{font-size:13px;color:#687385}}
 .admin-filter-body input{{width:100%;box-sizing:border-box;border:1px solid #ccd6e2;border-radius:8px;padding:11px 12px;font-size:15px}}
+.admin-filter-row{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}}
+.admin-filter-title{{font-size:13px;color:#687385;min-width:62px}}
+.admin-filter-chip{{border:1px solid #ccd6e2;background:#f8fafc;color:#0d1f2a;border-radius:999px;padding:8px 12px;font-size:13px;cursor:pointer}}
+.admin-filter-chip.active{{border-color:#087b83;background:#e7f7f8;color:#05656b;font-weight:700}}
+.admin-filter-clear{{border-color:#d8a4a4;background:#fff7f7;color:#8a2828}}
 .admin-filter-count{{font-size:13px;color:#687385}}
 </style>
 <section><h2>后台订单</h2>
@@ -1719,6 +1728,27 @@ def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
 <div class="admin-filter-body">
 <label for="admin-order-search">搜索订单号、客户、电话、邮箱、品牌或型号</label>
 <input id="admin-order-search" type="search" placeholder="输入关键词筛选订单">
+<div class="admin-filter-row" aria-label="付款状态筛选">
+<span class="admin-filter-title">付款</span>
+<button class="admin-filter-chip active" type="button" data-filter-group="payment" data-filter-value="all">全部</button>
+<button class="admin-filter-chip" type="button" data-filter-group="payment" data-filter-value="unpaid">未付款</button>
+<button class="admin-filter-chip" type="button" data-filter-group="payment" data-filter-value="paid">已付款</button>
+</div>
+<div class="admin-filter-row" aria-label="确认状态筛选">
+<span class="admin-filter-title">确认</span>
+<button class="admin-filter-chip active" type="button" data-filter-group="confirmation" data-filter-value="all">全部</button>
+<button class="admin-filter-chip" type="button" data-filter-group="confirmation" data-filter-value="unconfirmed">未确认</button>
+<button class="admin-filter-chip" type="button" data-filter-group="confirmation" data-filter-value="confirmed">已确认</button>
+</div>
+<div class="admin-filter-row" aria-label="时间范围筛选">
+<span class="admin-filter-title">时间</span>
+<button class="admin-filter-chip active" type="button" data-filter-group="days" data-filter-value="all">全部</button>
+<button class="admin-filter-chip" type="button" data-filter-group="days" data-filter-value="1">最近1天</button>
+<button class="admin-filter-chip" type="button" data-filter-group="days" data-filter-value="3">最近3天</button>
+<button class="admin-filter-chip" type="button" data-filter-group="days" data-filter-value="7">最近7天</button>
+<button class="admin-filter-chip" type="button" data-filter-group="days" data-filter-value="30">最近30天</button>
+<button class="admin-filter-chip admin-filter-clear" type="button" data-filter-reset>清空筛选</button>
+</div>
 <div class="admin-filter-count" id="admin-order-count"></div>
 </div>
 </details>
@@ -1728,17 +1758,51 @@ def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
   const input = document.getElementById('admin-order-search');
   const count = document.getElementById('admin-order-count');
   const rows = Array.from(document.querySelectorAll('[data-order-row]'));
+  const filters = {{payment:'all', confirmation:'all', days:'all'}};
+  const setActive = (group, value) => {{
+    document.querySelectorAll(`[data-filter-group="${{group}}"]`).forEach(button => {{
+      button.classList.toggle('active', button.dataset.filterValue === value);
+    }});
+  }};
+  const rowInDays = (row, days) => {{
+    if (days === 'all') return true;
+    const created = Date.parse(row.dataset.created || '');
+    if (!created) return false;
+    const limit = Number(days) * 24 * 60 * 60 * 1000;
+    return Date.now() - created <= limit;
+  }};
   const update = () => {{
     const q = (input.value || '').trim().toLowerCase();
     let visible = 0;
     rows.forEach(row => {{
-      const ok = !q || (row.dataset.search || '').includes(q);
+      const textOk = !q || (row.dataset.search || '').includes(q);
+      const paymentOk = filters.payment === 'all' || row.dataset.payment === filters.payment;
+      const confirmationOk = filters.confirmation === 'all' || row.dataset.confirmation === filters.confirmation;
+      const daysOk = rowInDays(row, filters.days);
+      const ok = textOk && paymentOk && confirmationOk && daysOk;
       row.style.display = ok ? '' : 'none';
       if (ok) visible += 1;
     }});
     count.textContent = q ? `显示 ${{visible}} / ${{rows.length}} 个订单` : `共 ${{rows.length}} 个订单`;
   }};
   input?.addEventListener('input', update);
+  document.querySelectorAll('[data-filter-group]').forEach(button => {{
+    button.addEventListener('click', () => {{
+      const group = button.dataset.filterGroup;
+      const value = button.dataset.filterValue;
+      filters[group] = value;
+      setActive(group, value);
+      update();
+    }});
+  }});
+  document.querySelector('[data-filter-reset]')?.addEventListener('click', () => {{
+    input.value = '';
+    Object.keys(filters).forEach(group => {{
+      filters[group] = 'all';
+      setActive(group, 'all');
+    }});
+    update();
+  }});
   update();
 }})();
 </script>
