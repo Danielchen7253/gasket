@@ -1668,8 +1668,22 @@ def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
                 if isinstance(item, dict)
             ]
         ) or ", ".join(order.get("selected_door_positions") or [])
+        search_blob = " ".join(
+            str(part or "")
+            for part in [
+                order.get("id"),
+                order.get("customer_name"),
+                order.get("customer_phone"),
+                order.get("customer_email"),
+                order.get("brand"),
+                order.get("equipment_model"),
+                order.get("payment_status"),
+                order.get("fulfillment_status"),
+                selected,
+            ]
+        ).lower()
         rows.append(
-            f"""<tr>
+            f"""<tr data-order-row data-search="{esc(search_blob)}">
 <td><a href="/ADMIN?order_id={esc(order.get('id'))}">#{esc(order.get('id'))}</a><br><span class="muted">{esc(short_datetime(order.get('created_at')))}</span></td>
 <td><strong>{esc(order.get('customer_name'))}</strong><br>{esc(order.get('customer_phone'))}<br>{esc(order.get('customer_email'))}</td>
 <td><strong>{esc(order.get('brand'))}</strong><br>{esc(order.get('equipment_model'))}</td>
@@ -1685,12 +1699,49 @@ def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
 .admin-table th{{background:#f8fafc;color:#687385}}
-.admin-actions{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}}
+.admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
+.admin-actions .logout{{margin-left:auto}}
+.admin-filter{{border:1px solid #dbe2ea;border-radius:8px;background:#fff;margin:0 0 14px;overflow:hidden}}
+.admin-filter summary{{cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;font-weight:700;color:#0d1f2a;list-style:none}}
+.admin-filter summary::-webkit-details-marker{{display:none}}
+.admin-filter summary::after{{content:"+";font-size:18px;color:#087b83}}
+.admin-filter[open] summary::after{{content:"-"}}
+.admin-filter-body{{border-top:1px solid #e7edf3;padding:14px;display:grid;gap:8px;max-width:520px}}
+.admin-filter-body label{{font-size:13px;color:#687385}}
+.admin-filter-body input{{width:100%;box-sizing:border-box;border:1px solid #ccd6e2;border-radius:8px;padding:11px 12px;font-size:15px}}
+.admin-filter-count{{font-size:13px;color:#687385}}
 </style>
 <section><h2>后台订单</h2>
 <p class="muted">工作人员查看客户订单、生产资料和后续联系记录。</p>
-<div class="admin-actions"><a class="button" href="/">前台上传页</a><a class="button" href="/ADMIN">订单列表</a><a class="button" href="/ADMIN?view=products">产品数据库</a><a class="button" href="/ADMIN/logout">退出登录</a></div>
+<div class="admin-actions"><a class="button" href="/ADMIN">订单列表</a><a class="button" href="/ADMIN?view=products">产品数据库</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
+<details class="admin-filter">
+<summary>筛选订单</summary>
+<div class="admin-filter-body">
+<label for="admin-order-search">搜索订单号、客户、电话、邮箱、品牌或型号</label>
+<input id="admin-order-search" type="search" placeholder="输入关键词筛选订单">
+<div class="admin-filter-count" id="admin-order-count"></div>
+</div>
+</details>
 <table class="admin-table"><thead><tr><th>订单</th><th>客户</th><th>冰箱</th><th>选择的密封条</th><th>金额</th><th>状态</th><th>付款链接</th></tr></thead><tbody>{rows_html}</tbody></table>
+<script>
+(() => {{
+  const input = document.getElementById('admin-order-search');
+  const count = document.getElementById('admin-order-count');
+  const rows = Array.from(document.querySelectorAll('[data-order-row]'));
+  const update = () => {{
+    const q = (input.value || '').trim().toLowerCase();
+    let visible = 0;
+    rows.forEach(row => {{
+      const ok = !q || (row.dataset.search || '').includes(q);
+      row.style.display = ok ? '' : 'none';
+      if (ok) visible += 1;
+    }});
+    count.textContent = q ? `显示 ${{visible}} / ${{rows.length}} 个订单` : `共 ${{rows.length}} 个订单`;
+  }};
+  input?.addEventListener('input', update);
+  update();
+}})();
+</script>
 </section>""")
 
 
