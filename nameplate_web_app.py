@@ -1571,13 +1571,13 @@ def render_evidence_package(package: dict) -> str:
     rows = []
     for item in sorted(items, key=lambda row: float(row.get("confidence_score") or 0), reverse=True)[:6]:
         rows.append(
-            f"""<div class="metric"><span>{esc(item.get('source_name') or item.get('evidence_type') or 'Evidence')}</span><strong>{esc(item.get('confidence_score') or 0)}%</strong><p>{esc(item.get('supports_value') or item.get('field_name') or '')}</p></div>"""
+            f"""<div class="metric"><span>{esc(item.get('source_name') or item.get('evidence_type') or '资料来源')}</span><strong>{esc(item.get('confidence_score') or 0)}%</strong><p>{esc(item.get('supports_value') or item.get('field_name') or '')}</p></div>"""
         )
-    rows_html = "".join(rows) if rows else "<p class='muted'>Evidence is being collected.</p>"
+    rows_html = "".join(rows) if rows else "<p class='muted'>资料仍在收集中。</p>"
     return f"""
-<section><h2>Product evidence package</h2>
-<div class="summary"><div class="metric"><span>Status</span><strong>{esc(package.get('status') or 'collecting')}</strong></div><div class="metric"><span>Completeness</span><strong>{esc(package.get('completeness_score') or 0)}%</strong></div><div class="metric"><span>Confidence</span><strong>{esc(package.get('overall_confidence') or 0)}%</strong></div></div>
-<p class="muted">Missing or still being enriched: {esc(missing_text)}</p>
+<section><h2>产品资料证据包</h2>
+<div class="summary"><div class="metric"><span>状态</span><strong>{esc(zh_status(package.get('status') or 'collecting'))}</strong></div><div class="metric"><span>完整度</span><strong>{esc(package.get('completeness_score') or 0)}%</strong></div><div class="metric"><span>置信度</span><strong>{esc(package.get('overall_confidence') or 0)}%</strong></div></div>
+<p class="muted">缺少或仍在补充的资料：{esc(missing_text)}</p>
 <div class="grid">{rows_html}</div></section>"""
 
 
@@ -1593,6 +1593,26 @@ def compact_json(value) -> str:
 def short_datetime(value) -> str:
     text = str(value or "")
     return text.replace("T", " ")[:19]
+
+
+def zh_status(value) -> str:
+    mapping = {
+        "checkout_created": "已生成付款链接",
+        "pending": "待付款",
+        "paid": "已付款",
+        "not_started": "未开始",
+        "in_production": "生产中",
+        "ready_to_ship": "待发货",
+        "fulfilled": "已完成",
+        "cancelled": "已取消",
+        "matched": "已匹配",
+        "needs_review": "需人工复核",
+        "collecting": "资料收集中",
+        "complete": "已完成",
+        "missing": "缺少资料",
+    }
+    text = str(value or "")
+    return mapping.get(text, text)
 
 
 def get_recent_customer_orders(client: httpx.Client, limit: int = 100) -> list[dict]:
@@ -1655,22 +1675,22 @@ def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
 <td><strong>{esc(order.get('brand'))}</strong><br>{esc(order.get('equipment_model'))}</td>
 <td>{esc(selected)}</td>
 <td><strong>{money(order.get('subtotal_usd'))}</strong><br>{esc(order.get('currency') or 'USD')}</td>
-<td>{esc(order.get('payment_status'))}<br><span class="muted">{esc(order.get('fulfillment_status'))}</span></td>
-<td><a href="{esc(order.get('checkout_url'))}" target="_blank" rel="noopener">Shopify checkout</a></td>
+<td>{esc(zh_status(order.get('payment_status')))}<br><span class="muted">{esc(zh_status(order.get('fulfillment_status')))}</span></td>
+<td><a href="{esc(order.get('checkout_url'))}" target="_blank" rel="noopener">Shopify付款链接</a></td>
 </tr>"""
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='7'>No customer orders yet.</td></tr>"
-    return page("ADMIN Orders", f"""
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='7'>暂无客户订单。</td></tr>"
+    return page("后台订单", f"""
 <style>
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
 .admin-table th{{background:#f8fafc;color:#687385}}
 .admin-actions{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}}
 </style>
-<section><h2>ADMIN Orders</h2>
-<p class="muted">Internal customer order, production, and follow-up queue.</p>
-<div class="admin-actions"><a class="button" href="/">Upload page</a><a class="button" href="/ADMIN">Orders</a><a class="button" href="/ADMIN?view=products">Product database</a><a class="button" href="/ADMIN/logout">Logout</a></div>
-<table class="admin-table"><thead><tr><th>Order</th><th>Customer</th><th>Refrigerator</th><th>Selected gaskets</th><th>Total</th><th>Status</th><th>Checkout</th></tr></thead><tbody>{rows_html}</tbody></table>
+<section><h2>后台订单</h2>
+<p class="muted">工作人员查看客户订单、生产资料和后续联系记录。</p>
+<div class="admin-actions"><a class="button" href="/">前台上传页</a><a class="button" href="/ADMIN">订单列表</a><a class="button" href="/ADMIN?view=products">产品数据库</a><a class="button" href="/ADMIN/logout">退出登录</a></div>
+<table class="admin-table"><thead><tr><th>订单</th><th>客户</th><th>冰箱</th><th>选择的密封条</th><th>金额</th><th>状态</th><th>付款链接</th></tr></thead><tbody>{rows_html}</tbody></table>
 </section>""")
 
 
@@ -1706,10 +1726,10 @@ def render_admin_order(order: dict, product: dict | None, request: dict | None, 
         [
             f"<div>{esc(label)}</div><div><strong>{esc(value)}</strong></div>"
             for label, value in [
-                ("Name", order.get("customer_name")),
-                ("Phone", order.get("customer_phone")),
-                ("Email", order.get("customer_email")),
-                ("Shipping", shipping_address_text(order)),
+                ("姓名", order.get("customer_name")),
+                ("电话", order.get("customer_phone")),
+                ("邮箱", order.get("customer_email")),
+                ("收货地址", shipping_address_text(order)),
             ]
         ]
     )
@@ -1717,24 +1737,24 @@ def render_admin_order(order: dict, product: dict | None, request: dict | None, 
         [
             f"<div>{esc(label)}</div><div><strong>{esc(value)}</strong></div>"
             for label, value in [
-                ("Brand", order.get("brand") or product_snapshot.get("brand")),
-                ("Model", order.get("equipment_model") or product_snapshot.get("equipment_model")),
-                ("Product type", (product or {}).get("product_type") or product_snapshot.get("product_type")),
-                ("Door count", (product or {}).get("door_count") or product_snapshot.get("door_count")),
-                ("Door layout", (product or {}).get("door_layout") or product_snapshot.get("door_layout")),
-                ("Lifecycle", (product or {}).get("lifecycle_status") or product_snapshot.get("lifecycle_status")),
-                ("Data confidence", (product or {}).get("data_confidence") or product_snapshot.get("data_confidence")),
+                ("品牌", order.get("brand") or product_snapshot.get("brand")),
+                ("型号", order.get("equipment_model") or product_snapshot.get("equipment_model")),
+                ("产品类型", (product or {}).get("product_type") or product_snapshot.get("product_type")),
+                ("门数", (product or {}).get("door_count") or product_snapshot.get("door_count")),
+                ("门位结构", (product or {}).get("door_layout") or product_snapshot.get("door_layout")),
+                ("生命周期", (product or {}).get("lifecycle_status") or product_snapshot.get("lifecycle_status")),
+                ("资料置信度", (product or {}).get("data_confidence") or product_snapshot.get("data_confidence")),
             ]
         ]
     )
     image = (product or {}).get("product_image_url") or product_snapshot.get("product_image_url")
-    image_html = f"<img class='photo' src='{esc(image)}' alt='Product image'>" if image else "<div class='photo loading'>Product image missing</div>"
+    image_html = f"<img class='photo' src='{esc(image)}' alt='产品图片'>" if image else "<div class='photo loading'>缺少产品图片</div>"
     plate = order.get("nameplate_image_url") or (request or {}).get("nameplate_image_url")
-    plate_html = f"<img class='plate' src='{esc(plate)}' alt='Nameplate image'>" if plate else "<div class='plate loading'>No nameplate image linked</div>"
-    gasket_rows_html = "".join(gasket_rows) if gasket_rows else "<tr><td colspan='8'>No selected gasket snapshot.</td></tr>"
-    current_rows_html = "".join(current_rows) if current_rows else "<tr><td colspan='5'>No current gasket rows.</td></tr>"
+    plate_html = f"<img class='plate' src='{esc(plate)}' alt='铭牌图片'>" if plate else "<div class='plate loading'>未关联铭牌图片</div>"
+    gasket_rows_html = "".join(gasket_rows) if gasket_rows else "<tr><td colspan='8'>暂无客户选择的密封条快照。</td></tr>"
+    current_rows_html = "".join(current_rows) if current_rows else "<tr><td colspan='5'>当前数据库暂无密封条记录。</td></tr>"
     product_id = order.get("refrigerator_product_id")
-    return page("ADMIN Order", f"""
+    return page("后台订单详情", f"""
 <style>
 pre{{white-space:pre-wrap;max-height:240px;overflow:auto;background:#f8fafc;border:1px solid #dbe2ea;border-radius:6px;padding:8px}}
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
@@ -1742,14 +1762,14 @@ pre{{white-space:pre-wrap;max-height:240px;overflow:auto;background:#f8fafc;bord
 .admin-table th{{background:#f8fafc;color:#687385}}
 .admin-actions{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}}
 </style>
-<section><div class="admin-actions"><a class="button" href="/ADMIN">Back to orders</a>{f' <a class="button" href="/ADMIN?product_id={esc(product_id)}">Product database record</a> <a class="button" href="/preview?product_id={esc(product_id)}">Customer preview</a>' if product_id else ''}<a class="button" href="{esc(order.get('checkout_url'))}" target="_blank" rel="noopener">Shopify checkout</a><a class="button" href="/ADMIN/logout">Logout</a></div>
-<h2>Order #{esc(order.get('id'))}</h2>
-<div class="summary"><div class="metric"><span>Payment</span><strong>{esc(order.get('payment_status'))}</strong></div><div class="metric"><span>Fulfillment</span><strong>{esc(order.get('fulfillment_status'))}</strong></div><div class="metric"><span>Total</span><strong>{money(order.get('subtotal_usd'))}</strong></div></div>
+<section><div class="admin-actions"><a class="button" href="/ADMIN">返回订单列表</a>{f' <a class="button" href="/ADMIN?product_id={esc(product_id)}">产品数据库记录</a> <a class="button" href="/preview?product_id={esc(product_id)}">客户预览页</a>' if product_id else ''}<a class="button" href="{esc(order.get('checkout_url'))}" target="_blank" rel="noopener">Shopify付款链接</a><a class="button" href="/ADMIN/logout">退出登录</a></div>
+<h2>订单 #{esc(order.get('id'))}</h2>
+<div class="summary"><div class="metric"><span>付款状态</span><strong>{esc(zh_status(order.get('payment_status')))}</strong></div><div class="metric"><span>生产状态</span><strong>{esc(zh_status(order.get('fulfillment_status')))}</strong></div><div class="metric"><span>金额</span><strong>{money(order.get('subtotal_usd'))}</strong></div></div>
 </section>
-<section><h2>Customer and refrigerator</h2><div class="result-grid"><div>{image_html}<br>{plate_html}</div><div><h3>Customer</h3><div class="facts">{customer_rows}</div></div><div><h3>Product</h3><div class="facts">{product_rows}</div></div></div></section>
-<section><h2>Production gasket snapshot</h2><table class="admin-table"><thead><tr><th>Door</th><th>Part</th><th>Size</th><th>Color</th><th>Type/Profile</th><th>Confidence</th><th>Price</th><th>Source</th></tr></thead><tbody>{gasket_rows_html}</tbody></table></section>
-<section><h2>Current database gasket rows</h2><table class="admin-table"><thead><tr><th>Door</th><th>Part</th><th>Size</th><th>Confidence</th><th>Price</th></tr></thead><tbody>{current_rows_html}</tbody></table></section>
-<section><h2>Raw internal snapshots</h2><div class="grid"><div><h3>Product snapshot</h3><pre>{esc(compact_json(product_snapshot))}</pre></div><div><h3>Request</h3><pre>{esc(compact_json(request or {}))}</pre></div></div></section>""")
+<section><h2>客户与冰箱资料</h2><div class="result-grid"><div>{image_html}<br>{plate_html}</div><div><h3>客户资料</h3><div class="facts">{customer_rows}</div></div><div><h3>产品资料</h3><div class="facts">{product_rows}</div></div></div></section>
+<section><h2>生产用密封条快照</h2><table class="admin-table"><thead><tr><th>门位</th><th>配件号</th><th>尺寸</th><th>颜色</th><th>类型/截面</th><th>置信度</th><th>价格</th><th>来源</th></tr></thead><tbody>{gasket_rows_html}</tbody></table></section>
+<section><h2>当前数据库密封条记录</h2><table class="admin-table"><thead><tr><th>门位</th><th>配件号</th><th>尺寸</th><th>置信度</th><th>价格</th></tr></thead><tbody>{current_rows_html}</tbody></table></section>
+<section><h2>内部原始资料</h2><div class="grid"><div><h3>产品快照</h3><pre>{esc(compact_json(product_snapshot))}</pre></div><div><h3>客户请求记录</h3><pre>{esc(compact_json(request or {}))}</pre></div></div></section>""")
 
 
 def render_admin_dashboard(packages: list[dict]) -> bytes:
@@ -1758,75 +1778,75 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
         product = package.get("refrigerator_products") or {}
         product_id = package.get("refrigerator_product_id") or product.get("id")
         missing = package.get("missing_fields") or []
-        missing_text = ", ".join([item.get("label") or item.get("field_name") or "" for item in missing[:4]]) or "None"
-        image_state = "yes" if product.get("product_image_url") else "missing"
+        missing_text = ", ".join([item.get("label") or item.get("field_name") or "" for item in missing[:4]]) or "无"
+        image_state = "已有" if product.get("product_image_url") else "缺少"
         rows.append(
             f"""<tr>
 <td><a href="/ADMIN?product_id={esc(product_id)}">{esc(product_id)}</a></td>
 <td><strong>{esc(package.get('brand') or product.get('brand'))}</strong><br>{esc(package.get('equipment_model') or product.get('equipment_model'))}</td>
 <td>{esc(product.get('product_type') or '')}<br><span class="muted">{esc(product.get('door_layout') or '')}</span></td>
-<td>{esc(package.get('status'))}</td>
+<td>{esc(zh_status(package.get('status')))}</td>
 <td>{esc(package.get('completeness_score'))}%</td>
 <td>{esc(package.get('overall_confidence'))}%</td>
 <td>{esc(image_state)}</td>
 <td>{esc(missing_text)}</td>
-<td><span class="muted">Product</span><br>{esc(product.get('updated_at') or '')}<br><span class="muted">Enriched</span><br>{esc(product.get('last_enriched_at') or '')}<br><span class="muted">Package</span><br>{esc(package.get('updated_at') or '')}</td>
+<td><span class="muted">产品更新</span><br>{esc(product.get('updated_at') or '')}<br><span class="muted">最后补全</span><br>{esc(product.get('last_enriched_at') or '')}<br><span class="muted">证据包更新</span><br>{esc(package.get('updated_at') or '')}</td>
 </tr>"""
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>No evidence packages yet.</td></tr>"
-    return page("ADMIN", f"""
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>暂无产品证据包。</td></tr>"
+    return page("后台产品数据库", f"""
 <style>
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
 .admin-table th{{background:#f8fafc;color:#687385}}
 .admin-actions{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}}
 </style>
-<section><h2>ADMIN Product Evidence</h2>
-<p class="muted">Internal view for product evidence packages, field completeness, confidence, and enrichment timestamps.</p>
-<div class="admin-actions"><a class="button" href="/">Upload page</a><a class="button" href="/ADMIN">Orders</a><a class="button" href="/ADMIN?view=products">Refresh products</a><a class="button" href="/ADMIN/logout">Logout</a></div>
-<table class="admin-table"><thead><tr><th>ID</th><th>Product</th><th>Profile</th><th>Status</th><th>Complete</th><th>Confidence</th><th>Image</th><th>Missing</th><th>Times</th></tr></thead><tbody>{rows_html}</tbody></table>
+<section><h2>后台产品数据库</h2>
+<p class="muted">内部查看产品资料证据、字段完整度、置信度和补全时间。</p>
+<div class="admin-actions"><a class="button" href="/">前台上传页</a><a class="button" href="/ADMIN">订单列表</a><a class="button" href="/ADMIN?view=products">刷新产品数据库</a><a class="button" href="/ADMIN/logout">退出登录</a></div>
+<table class="admin-table"><thead><tr><th>ID</th><th>产品</th><th>类型/结构</th><th>状态</th><th>完整度</th><th>置信度</th><th>图片</th><th>缺少资料</th><th>时间</th></tr></thead><tbody>{rows_html}</tbody></table>
 </section>""")
 
 
 def render_admin_login(message: str = "") -> bytes:
     warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
-    config_note = "" if ADMIN_PASSWORD else "<p style='color:#9f4b12'>ADMIN_PASSWORD is not configured.</p>"
-    return page("ADMIN Login", f"""
-<section style="max-width:520px;margin:0 auto"><h2>ADMIN Login</h2>
-<p class="muted">Internal orders, production details, product evidence, and database review.</p>
+    config_note = "" if ADMIN_PASSWORD else "<p style='color:#9f4b12'>后台密码尚未配置。</p>"
+    return page("后台登录", f"""
+<section style="max-width:520px;margin:0 auto"><h2>后台登录</h2>
+<p class="muted">工作人员查看订单、生产资料、产品证据和数据库。</p>
 {warning}{config_note}
 <form method="post" action="/ADMIN/login">
-<label>Password</label><input type="password" name="password" autocomplete="current-password" autofocus>
-<p><button type="submit">Unlock ADMIN</button> <a class="button" href="/">Back to site</a></p>
+<label>密码</label><input type="password" name="password" autocomplete="current-password" autofocus>
+<p><button type="submit">进入后台</button> <a class="button" href="/">返回网站</a></p>
 </form></section>""")
 
 
 def render_admin_product(product: dict, package: dict | None, items: list[dict], quote_items: list[dict]) -> bytes:
     fields = [
-        ("Brand", product.get("brand")),
-        ("Model", product.get("equipment_model")),
-        ("Manufacturer", product.get("manufacturer")),
-        ("Product type", product.get("product_type")),
-        ("Door count", product.get("door_count")),
-        ("Door layout", product.get("door_layout")),
-        ("Lifecycle", product.get("lifecycle_status")),
-        ("Data status", product.get("data_status")),
-        ("Data confidence", product.get("data_confidence")),
-        ("Created", product.get("created_at")),
-        ("Updated", product.get("updated_at")),
-        ("Last discovered", product.get("last_discovered_at")),
-        ("Last enriched", product.get("last_enriched_at")),
-        ("Door layout updated", product.get("door_layout_updated_at")),
-        ("Image confidence", product.get("product_image_confidence")),
-        ("Image source", product.get("product_image_source_url")),
-        ("Official URL", product.get("official_product_url")),
-        ("Manual URL", product.get("manual_url")),
-        ("Spec sheet URL", product.get("spec_sheet_url")),
+        ("品牌", product.get("brand")),
+        ("型号", product.get("equipment_model")),
+        ("生产厂家", product.get("manufacturer")),
+        ("产品类型", product.get("product_type")),
+        ("门数", product.get("door_count")),
+        ("门位结构", product.get("door_layout")),
+        ("生命周期", product.get("lifecycle_status")),
+        ("资料状态", zh_status(product.get("data_status"))),
+        ("资料置信度", product.get("data_confidence")),
+        ("创建时间", product.get("created_at")),
+        ("更新时间", product.get("updated_at")),
+        ("最后发现时间", product.get("last_discovered_at")),
+        ("最后补全时间", product.get("last_enriched_at")),
+        ("门位更新时间", product.get("door_layout_updated_at")),
+        ("图片置信度", product.get("product_image_confidence")),
+        ("图片来源", product.get("product_image_source_url")),
+        ("官网链接", product.get("official_product_url")),
+        ("手册链接", product.get("manual_url")),
+        ("规格书链接", product.get("spec_sheet_url")),
     ]
     field_rows = "".join([f"<div>{esc(label)}</div><div><strong>{esc(value)}</strong></div>" for label, value in fields])
     image = product.get("product_image_url")
-    image_html = f"<img class='photo' src='{esc(image)}' alt='Product image'>" if image else "<div class='photo loading'>Product image missing</div>"
-    package_html = render_evidence_package(package or {}) if package else "<section><h2>Product evidence package</h2><p class='muted'>No evidence package yet.</p></section>"
+    image_html = f"<img class='photo' src='{esc(image)}' alt='产品图片'>" if image else "<div class='photo loading'>缺少产品图片</div>"
+    package_html = render_evidence_package(package or {}) if package else "<section><h2>产品资料证据包</h2><p class='muted'>暂无证据包。</p></section>"
     item_rows = []
     for item in items:
         item_rows.append(
@@ -1837,20 +1857,20 @@ def render_admin_product(product: dict, package: dict | None, items: list[dict],
         quote_rows.append(
             f"""<tr><td>{esc(quote.get('door_position_display') or quote.get('door_position'))}</td><td>{esc(quote.get('part_number') or quote.get('universal_part_number'))}</td><td>{esc(quote.get('dimensions_text'))}</td><td>{esc(quote.get('confidence_score'))}%</td><td>{money(quote.get('final_price_usd'))}</td><td>{esc(quote.get('source_name'))}</td></tr>"""
         )
-    item_rows_html = "".join(item_rows) if item_rows else "<tr><td colspan='6'>No evidence items yet.</td></tr>"
-    quote_rows_html = "".join(quote_rows) if quote_rows else "<tr><td colspan='6'>No gasket quote rows yet.</td></tr>"
-    return page("ADMIN Product", f"""
+    item_rows_html = "".join(item_rows) if item_rows else "<tr><td colspan='6'>暂无证据明细。</td></tr>"
+    quote_rows_html = "".join(quote_rows) if quote_rows else "<tr><td colspan='6'>暂无密封条报价记录。</td></tr>"
+    return page("后台产品详情", f"""
 <style>
 pre{{white-space:pre-wrap;max-height:180px;overflow:auto;background:#f8fafc;border:1px solid #dbe2ea;border-radius:6px;padding:8px}}
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
 .admin-table th{{background:#f8fafc;color:#687385}}
 </style>
-<section><p><a class="button" href="/ADMIN">Back to ADMIN</a> <a class="button" href="/preview?product_id={esc(product.get('id'))}">Customer preview</a> <a class="button" href="/ADMIN/logout">Logout</a></p>
+<section><p><a class="button" href="/ADMIN?view=products">返回产品数据库</a> <a class="button" href="/preview?product_id={esc(product.get('id'))}">客户预览页</a> <a class="button" href="/ADMIN/logout">退出登录</a></p>
 <h2>{esc(product.get('brand'))} {esc(product.get('equipment_model'))}</h2><div class="result-grid"><div>{image_html}</div><div class="facts">{field_rows}</div></div></section>
 {package_html}
-<section><h2>Evidence items</h2><table class="admin-table"><thead><tr><th>Field</th><th>Type</th><th>Source</th><th>Supports</th><th>Confidence</th><th>JSON</th></tr></thead><tbody>{item_rows_html}</tbody></table></section>
-<section><h2>Gasket rows</h2><table class="admin-table"><thead><tr><th>Door</th><th>Part</th><th>Size</th><th>Confidence</th><th>Price</th><th>Source</th></tr></thead><tbody>{quote_rows_html}</tbody></table></section>""")
+<section><h2>证据明细</h2><table class="admin-table"><thead><tr><th>字段</th><th>类型</th><th>来源</th><th>支持的值</th><th>置信度</th><th>JSON</th></tr></thead><tbody>{item_rows_html}</tbody></table></section>
+<section><h2>密封条记录</h2><table class="admin-table"><thead><tr><th>门位</th><th>配件号</th><th>尺寸</th><th>置信度</th><th>价格</th><th>来源</th></tr></thead><tbody>{quote_rows_html}</tbody></table></section>""")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1898,7 +1918,7 @@ class Handler(BaseHTTPRequestHandler):
                 if order_id:
                     order = get_customer_order(client, order_id)
                     if not order:
-                        self.send_html(page("ADMIN Order Not Found", "<section><h2>Order not found</h2><p><a class='button' href='/ADMIN'>Back to orders</a></p></section>"), HTTPStatus.NOT_FOUND)
+                        self.send_html(page("后台订单不存在", "<section><h2>订单不存在</h2><p><a class='button' href='/ADMIN'>返回订单列表</a></p></section>"), HTTPStatus.NOT_FOUND)
                         return
                     product = get_product(client, int(order["refrigerator_product_id"])) if order.get("refrigerator_product_id") else None
                     request = None
@@ -1917,7 +1937,7 @@ class Handler(BaseHTTPRequestHandler):
                 if product_id:
                     product = get_product(client, product_id)
                     if not product:
-                        self.send_html(page("ADMIN Product Not Found", "<section><h2>Product not found</h2><p><a class='button' href='/ADMIN'>Back to ADMIN</a></p></section>"), HTTPStatus.NOT_FOUND)
+                        self.send_html(page("后台产品不存在", "<section><h2>产品不存在</h2><p><a class='button' href='/ADMIN?view=products'>返回产品数据库</a></p></section>"), HTTPStatus.NOT_FOUND)
                         return
                     self.send_html(
                         render_admin_product(
@@ -2005,7 +2025,7 @@ class Handler(BaseHTTPRequestHandler):
                 cookie = f"{ADMIN_COOKIE_NAME}={make_admin_cookie()}; Path=/; Max-Age={ADMIN_SESSION_SECONDS}; HttpOnly; SameSite=Lax"
                 self.redirect("/ADMIN", cookie)
                 return
-            self.send_html(render_admin_login("Wrong password."), HTTPStatus.UNAUTHORIZED)
+            self.send_html(render_admin_login("密码错误。"), HTTPStatus.UNAUTHORIZED)
             return
         if path == "/checkout":
             handle_checkout_post(self, self.rfile.read(int(self.headers.get("Content-Length", "0"))))
