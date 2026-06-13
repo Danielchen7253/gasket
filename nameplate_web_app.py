@@ -816,6 +816,10 @@ def handle_checkout_post(handler, raw_body: bytes) -> None:
             return
         try:
             checkout_url = create_shopify_cart(client, product, chosen, customer_info)
+            try:
+                create_customer_order_record(client, product, chosen, customer_info, checkout_url)
+            except Exception as order_exc:
+                print(f"internal customer order save failed for product {product_id}: {order_exc}", flush=True)
         except Exception as exc:
             if wants_json:
                 send_checkout_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
@@ -1024,6 +1028,133 @@ def get_latest_request_for_product(client: httpx.Client, product_id: int) -> dic
         headers=supabase_headers(),
     )
     if response.status_code in {404, 406}:
+        return None
+    response.raise_for_status()
+    rows = response.json()
+    return rows[0] if rows else None
+
+
+def get_latest_request_for_checkout(client: httpx.Client, product_id: int, customer_email: str | None = None) -> dict | None:
+    params = {
+        "select": "*",
+        "matched_refrigerator_product_id": f"eq.{product_id}",
+        "order": "created_at.desc",
+        "limit": "1",
+    }
+    email = (customer_email or "").strip()
+    if email:
+        params["customer_email"] = f"eq.{email}"
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/gasket_requests",
+        params=params,
+        headers=supabase_headers(),
+    )
+    if response.status_code in {404, 406}:
+        return None
+    response.raise_for_status()
+    rows = response.json()
+    if rows:
+        return rows[0]
+    if email:
+        return get_latest_request_for_product(client, product_id)
+    return None
+
+
+def customer_order_quote_snapshot(item: dict) -> dict:
+    return {
+        "door_position": item.get("door_position"),
+        "door_position_display": item.get("door_position_display"),
+        "part_number": item.get("part_number"),
+        "universal_part_number": item.get("universal_part_number"),
+        "dimensions_text": item.get("dimensions_text"),
+        "width_in": item.get("width_in"),
+        "height_in": item.get("height_in"),
+        "perimeter_in": item.get("perimeter_in"),
+        "color": item.get("color"),
+        "gasket_type": item.get("gasket_type"),
+        "profile_type": item.get("profile_type"),
+        "gasket_image_url": item.get("gasket_image_url"),
+        "cross_section_image_url": item.get("cross_section_image_url"),
+        "confidence_score": item.get("confidence_score"),
+        "source_name": item.get("source_name"),
+        "source_url": item.get("source_url"),
+        "final_price_usd": item.get("final_price_usd"),
+        "base_price_usd": item.get("base_price_usd"),
+        "customer_size": customer_gasket_size(item),
+    }
+
+
+def customer_order_product_snapshot(product: dict) -> dict:
+    keys = [
+        "id",
+        "brand",
+        "equipment_model",
+        "manufacturer",
+        "product_type",
+        "door_count",
+        "door_layout",
+        "door_positions",
+        "product_image_url",
+        "product_image_source_url",
+        "product_image_confidence",
+        "lifecycle_status",
+        "data_status",
+        "data_confidence",
+        "data_source_summary",
+        "official_product_url",
+        "manual_url",
+        "spec_sheet_url",
+        "updated_at",
+        "last_enriched_at",
+    ]
+    return {key: product.get(key) for key in keys}
+
+
+def create_customer_order_record(
+    client: httpx.Client,
+    product: dict,
+    quote_items: list[dict],
+    customer_info: dict,
+    checkout_url: str,
+) -> dict | None:
+    request = get_latest_request_for_checkout(client, int(product["id"]), customer_info.get("customer_email"))
+    quote_snapshot = [customer_order_quote_snapshot(item) for item in quote_items]
+    subtotal = sum(float(item.get("final_price_usd") or item.get("base_price_usd") or 0) for item in quote_items)
+    payload = {
+        "order_status": "checkout_created",
+        "payment_status": "pending",
+        "fulfillment_status": "not_started",
+        "checkout_provider": "shopify",
+        "checkout_url": checkout_url,
+        "customer_name": customer_info.get("customer_name"),
+        "customer_email": customer_info.get("customer_email"),
+        "customer_phone": customer_info.get("customer_phone"),
+        "shipping_address": {
+            "address1": customer_info.get("shipping_address1"),
+            "address2": customer_info.get("shipping_address2"),
+            "city": customer_info.get("shipping_city"),
+            "state": customer_info.get("shipping_state"),
+            "zip": customer_info.get("shipping_zip"),
+            "country": customer_info.get("shipping_country") or "United States",
+        },
+        "refrigerator_product_id": product.get("id"),
+        "gasket_request_id": request.get("id") if request else None,
+        "brand": product.get("brand"),
+        "equipment_model": product.get("equipment_model"),
+        "nameplate_image_url": request.get("nameplate_image_url") if request else None,
+        "selected_door_positions": [str(item.get("door_position") or "") for item in quote_items if item.get("door_position")],
+        "quote_items": quote_snapshot,
+        "product_snapshot": customer_order_product_snapshot(product),
+        "subtotal_usd": round(subtotal, 2),
+        "currency": "USD",
+    }
+    response = client.post(
+        f"{SUPABASE_URL}/rest/v1/customer_orders",
+        headers=supabase_headers("return=representation"),
+        json=payload,
+    )
+    if response.status_code in {404, 406}:
+        print("customer_orders table is not available; checkout continued without internal order record", flush=True)
         return None
     response.raise_for_status()
     rows = response.json()
@@ -1459,6 +1590,168 @@ def compact_json(value) -> str:
         return str(value)
 
 
+def short_datetime(value) -> str:
+    text = str(value or "")
+    return text.replace("T", " ")[:19]
+
+
+def get_recent_customer_orders(client: httpx.Client, limit: int = 100) -> list[dict]:
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/customer_orders",
+        params={
+            "select": "*",
+            "order": "created_at.desc",
+            "limit": str(limit),
+        },
+        headers=supabase_headers(),
+    )
+    if response.status_code in {404, 406}:
+        return []
+    response.raise_for_status()
+    return response.json()
+
+
+def get_customer_order(client: httpx.Client, order_id: int) -> dict | None:
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/customer_orders",
+        params={"select": "*", "id": f"eq.{order_id}", "limit": "1"},
+        headers=supabase_headers(),
+    )
+    if response.status_code in {404, 406}:
+        return None
+    response.raise_for_status()
+    rows = response.json()
+    return rows[0] if rows else None
+
+
+def shipping_address_text(order: dict) -> str:
+    address = order.get("shipping_address") or {}
+    if not isinstance(address, dict):
+        return str(address or "")
+    line1 = address.get("address1") or ""
+    line2 = address.get("address2") or ""
+    city_line = ", ".join([part for part in [address.get("city"), address.get("state"), address.get("zip")] if part])
+    country = address.get("country") or ""
+    return "\n".join([part for part in [line1, line2, city_line, country] if part])
+
+
+def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
+    rows = []
+    for order in orders:
+        quote_items = order.get("quote_items") or []
+        if not isinstance(quote_items, list):
+            quote_items = []
+        selected = ", ".join(
+            [
+                str(item.get("door_position_display") or item.get("door_position") or "")
+                for item in quote_items[:4]
+                if isinstance(item, dict)
+            ]
+        ) or ", ".join(order.get("selected_door_positions") or [])
+        rows.append(
+            f"""<tr>
+<td><a href="/ADMIN?order_id={esc(order.get('id'))}">#{esc(order.get('id'))}</a><br><span class="muted">{esc(short_datetime(order.get('created_at')))}</span></td>
+<td><strong>{esc(order.get('customer_name'))}</strong><br>{esc(order.get('customer_phone'))}<br>{esc(order.get('customer_email'))}</td>
+<td><strong>{esc(order.get('brand'))}</strong><br>{esc(order.get('equipment_model'))}</td>
+<td>{esc(selected)}</td>
+<td><strong>{money(order.get('subtotal_usd'))}</strong><br>{esc(order.get('currency') or 'USD')}</td>
+<td>{esc(order.get('payment_status'))}<br><span class="muted">{esc(order.get('fulfillment_status'))}</span></td>
+<td><a href="{esc(order.get('checkout_url'))}" target="_blank" rel="noopener">Shopify checkout</a></td>
+</tr>"""
+        )
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='7'>No customer orders yet.</td></tr>"
+    return page("ADMIN Orders", f"""
+<style>
+.admin-table{{width:100%;border-collapse:collapse;background:white}}
+.admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
+.admin-table th{{background:#f8fafc;color:#687385}}
+.admin-actions{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}}
+</style>
+<section><h2>ADMIN Orders</h2>
+<p class="muted">Internal customer order, production, and follow-up queue.</p>
+<div class="admin-actions"><a class="button" href="/">Upload page</a><a class="button" href="/ADMIN">Orders</a><a class="button" href="/ADMIN?view=products">Product database</a><a class="button" href="/ADMIN/logout">Logout</a></div>
+<table class="admin-table"><thead><tr><th>Order</th><th>Customer</th><th>Refrigerator</th><th>Selected gaskets</th><th>Total</th><th>Status</th><th>Checkout</th></tr></thead><tbody>{rows_html}</tbody></table>
+</section>""")
+
+
+def render_admin_order(order: dict, product: dict | None, request: dict | None, current_quote_items: list[dict]) -> bytes:
+    quote_items = order.get("quote_items") or []
+    if not isinstance(quote_items, list):
+        quote_items = []
+    product_snapshot = order.get("product_snapshot") or {}
+    if not isinstance(product_snapshot, dict):
+        product_snapshot = {}
+    gasket_rows = []
+    for item in quote_items:
+        if not isinstance(item, dict):
+            continue
+        gasket_rows.append(
+            f"""<tr>
+<td>{esc(item.get('door_position_display') or item.get('door_position'))}</td>
+<td>{esc(item.get('part_number') or item.get('universal_part_number'))}</td>
+<td>{esc(item.get('customer_size') or item.get('dimensions_text'))}</td>
+<td>{esc(item.get('color'))}</td>
+<td>{esc(item.get('gasket_type') or item.get('profile_type'))}</td>
+<td>{esc(item.get('confidence_score'))}%</td>
+<td>{money(item.get('final_price_usd'))}</td>
+<td>{esc(item.get('source_name'))}<br><span class="muted">{esc(item.get('source_url'))}</span></td>
+</tr>"""
+        )
+    current_rows = []
+    for item in current_quote_items:
+        current_rows.append(
+            f"""<tr><td>{esc(item.get('door_position_display') or item.get('door_position'))}</td><td>{esc(item.get('part_number') or item.get('universal_part_number'))}</td><td>{esc(customer_gasket_size(item))}</td><td>{esc(item.get('confidence_score'))}%</td><td>{money(item.get('final_price_usd'))}</td></tr>"""
+        )
+    customer_rows = "".join(
+        [
+            f"<div>{esc(label)}</div><div><strong>{esc(value)}</strong></div>"
+            for label, value in [
+                ("Name", order.get("customer_name")),
+                ("Phone", order.get("customer_phone")),
+                ("Email", order.get("customer_email")),
+                ("Shipping", shipping_address_text(order)),
+            ]
+        ]
+    )
+    product_rows = "".join(
+        [
+            f"<div>{esc(label)}</div><div><strong>{esc(value)}</strong></div>"
+            for label, value in [
+                ("Brand", order.get("brand") or product_snapshot.get("brand")),
+                ("Model", order.get("equipment_model") or product_snapshot.get("equipment_model")),
+                ("Product type", (product or {}).get("product_type") or product_snapshot.get("product_type")),
+                ("Door count", (product or {}).get("door_count") or product_snapshot.get("door_count")),
+                ("Door layout", (product or {}).get("door_layout") or product_snapshot.get("door_layout")),
+                ("Lifecycle", (product or {}).get("lifecycle_status") or product_snapshot.get("lifecycle_status")),
+                ("Data confidence", (product or {}).get("data_confidence") or product_snapshot.get("data_confidence")),
+            ]
+        ]
+    )
+    image = (product or {}).get("product_image_url") or product_snapshot.get("product_image_url")
+    image_html = f"<img class='photo' src='{esc(image)}' alt='Product image'>" if image else "<div class='photo loading'>Product image missing</div>"
+    plate = order.get("nameplate_image_url") or (request or {}).get("nameplate_image_url")
+    plate_html = f"<img class='plate' src='{esc(plate)}' alt='Nameplate image'>" if plate else "<div class='plate loading'>No nameplate image linked</div>"
+    gasket_rows_html = "".join(gasket_rows) if gasket_rows else "<tr><td colspan='8'>No selected gasket snapshot.</td></tr>"
+    current_rows_html = "".join(current_rows) if current_rows else "<tr><td colspan='5'>No current gasket rows.</td></tr>"
+    product_id = order.get("refrigerator_product_id")
+    return page("ADMIN Order", f"""
+<style>
+pre{{white-space:pre-wrap;max-height:240px;overflow:auto;background:#f8fafc;border:1px solid #dbe2ea;border-radius:6px;padding:8px}}
+.admin-table{{width:100%;border-collapse:collapse;background:white}}
+.admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
+.admin-table th{{background:#f8fafc;color:#687385}}
+.admin-actions{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}}
+</style>
+<section><div class="admin-actions"><a class="button" href="/ADMIN">Back to orders</a>{f' <a class="button" href="/ADMIN?product_id={esc(product_id)}">Product database record</a> <a class="button" href="/preview?product_id={esc(product_id)}">Customer preview</a>' if product_id else ''}<a class="button" href="{esc(order.get('checkout_url'))}" target="_blank" rel="noopener">Shopify checkout</a><a class="button" href="/ADMIN/logout">Logout</a></div>
+<h2>Order #{esc(order.get('id'))}</h2>
+<div class="summary"><div class="metric"><span>Payment</span><strong>{esc(order.get('payment_status'))}</strong></div><div class="metric"><span>Fulfillment</span><strong>{esc(order.get('fulfillment_status'))}</strong></div><div class="metric"><span>Total</span><strong>{money(order.get('subtotal_usd'))}</strong></div></div>
+</section>
+<section><h2>Customer and refrigerator</h2><div class="result-grid"><div>{image_html}<br>{plate_html}</div><div><h3>Customer</h3><div class="facts">{customer_rows}</div></div><div><h3>Product</h3><div class="facts">{product_rows}</div></div></div></section>
+<section><h2>Production gasket snapshot</h2><table class="admin-table"><thead><tr><th>Door</th><th>Part</th><th>Size</th><th>Color</th><th>Type/Profile</th><th>Confidence</th><th>Price</th><th>Source</th></tr></thead><tbody>{gasket_rows_html}</tbody></table></section>
+<section><h2>Current database gasket rows</h2><table class="admin-table"><thead><tr><th>Door</th><th>Part</th><th>Size</th><th>Confidence</th><th>Price</th></tr></thead><tbody>{current_rows_html}</tbody></table></section>
+<section><h2>Raw internal snapshots</h2><div class="grid"><div><h3>Product snapshot</h3><pre>{esc(compact_json(product_snapshot))}</pre></div><div><h3>Request</h3><pre>{esc(compact_json(request or {}))}</pre></div></div></section>""")
+
+
 def render_admin_dashboard(packages: list[dict]) -> bytes:
     rows = []
     for package in packages:
@@ -1490,7 +1783,7 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
 </style>
 <section><h2>ADMIN Product Evidence</h2>
 <p class="muted">Internal view for product evidence packages, field completeness, confidence, and enrichment timestamps.</p>
-<div class="admin-actions"><a class="button" href="/">Upload page</a><a class="button" href="/ADMIN">Refresh ADMIN</a><a class="button" href="/ADMIN/logout">Logout</a></div>
+<div class="admin-actions"><a class="button" href="/">Upload page</a><a class="button" href="/ADMIN">Orders</a><a class="button" href="/ADMIN?view=products">Refresh products</a><a class="button" href="/ADMIN/logout">Logout</a></div>
 <table class="admin-table"><thead><tr><th>ID</th><th>Product</th><th>Profile</th><th>Status</th><th>Complete</th><th>Confidence</th><th>Image</th><th>Missing</th><th>Times</th></tr></thead><tbody>{rows_html}</tbody></table>
 </section>""")
 
@@ -1500,7 +1793,7 @@ def render_admin_login(message: str = "") -> bytes:
     config_note = "" if ADMIN_PASSWORD else "<p style='color:#9f4b12'>ADMIN_PASSWORD is not configured.</p>"
     return page("ADMIN Login", f"""
 <section style="max-width:520px;margin:0 auto"><h2>ADMIN Login</h2>
-<p class="muted">Internal product evidence and enrichment control.</p>
+<p class="muted">Internal orders, production details, product evidence, and database review.</p>
 {warning}{config_note}
 <form method="post" action="/ADMIN/login">
 <label>Password</label><input type="password" name="password" autocomplete="current-password" autofocus>
@@ -1598,8 +1891,29 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_html(render_admin_login())
                 return
             query = parse_qs(parsed.query)
+            order_id = int(query.get("order_id", ["0"])[0] or "0")
             product_id = int(query.get("product_id", ["0"])[0] or "0")
+            view = (query.get("view", ["orders"])[0] or "orders").lower()
             with httpx.Client(timeout=30) as client:
+                if order_id:
+                    order = get_customer_order(client, order_id)
+                    if not order:
+                        self.send_html(page("ADMIN Order Not Found", "<section><h2>Order not found</h2><p><a class='button' href='/ADMIN'>Back to orders</a></p></section>"), HTTPStatus.NOT_FOUND)
+                        return
+                    product = get_product(client, int(order["refrigerator_product_id"])) if order.get("refrigerator_product_id") else None
+                    request = None
+                    if order.get("gasket_request_id"):
+                        request_response = client.get(
+                            f"{SUPABASE_URL}/rest/v1/gasket_requests",
+                            params={"select": "*", "id": f"eq.{order['gasket_request_id']}", "limit": "1"},
+                            headers=supabase_headers(),
+                        )
+                        request_response.raise_for_status()
+                        request_rows = request_response.json()
+                        request = request_rows[0] if request_rows else None
+                    current_quote_items = get_quote_items(client, int(order["refrigerator_product_id"])) if order.get("refrigerator_product_id") else []
+                    self.send_html(render_admin_order(order, product, request, current_quote_items))
+                    return
                 if product_id:
                     product = get_product(client, product_id)
                     if not product:
@@ -1614,7 +1928,10 @@ class Handler(BaseHTTPRequestHandler):
                         )
                     )
                     return
-                self.send_html(render_admin_dashboard(get_recent_evidence_packages(client)))
+                if view == "products":
+                    self.send_html(render_admin_dashboard(get_recent_evidence_packages(client)))
+                    return
+                self.send_html(render_admin_orders_dashboard(get_recent_customer_orders(client)))
             return
         if parsed.path.lower() == "/admin/logout":
             self.redirect("/", f"{ADMIN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
