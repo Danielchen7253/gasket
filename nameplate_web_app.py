@@ -1349,17 +1349,23 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 def render_home(message: str = "", stats: dict | None = None) -> bytes:
     warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
     stats = stats or {}
-    stats_html = ""
-    if stats:
-        stats_html = f"""
+    stats_html = f"""
 <section><h2>Fit database coverage</h2>
 <div class="summary">
-<div class="metric"><span>Refrigerator models</span><strong>{esc(stats.get('product_total'))}</strong></div>
-<div class="metric"><span>Door gasket records</span><strong>{esc(stats.get('quote_items'))}</strong></div>
-<div class="metric"><span>Known profile references</span><strong>{esc(stats.get('known_profiles'))}</strong></div>
+<div class="metric"><span>Refrigerator models</span><strong data-public-stat="product_total">{esc(stats.get('product_total') or '...')}</strong></div>
+<div class="metric"><span>Door gasket records</span><strong data-public-stat="quote_items">{esc(stats.get('quote_items') or '...')}</strong></div>
+<div class="metric"><span>Known profile references</span><strong data-public-stat="known_profiles">{esc(stats.get('known_profiles') or '...')}</strong></div>
 </div>
 <p class="muted">Our matching database grows from real nameplate searches, product records, gasket dimensions, profile references, and confirmed order history.</p>
-</section>"""
+</section>
+<script>
+fetch('/public-stats', {{cache:'no-store'}}).then(r=>r.json()).then(data=>{{
+  document.querySelectorAll('[data-public-stat]').forEach(el=>{{
+    const key=el.getAttribute('data-public-stat');
+    if(data && data[key] !== undefined && data[key] !== null) el.textContent=data[key];
+  }});
+}}).catch(()=>{{}});
+</script>"""
     return page("Gasket Match", f"""
 <section><form id="upload" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
 <div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>
@@ -2320,13 +2326,22 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/":
-            stats = None
+            self.send_html(render_home())
+            return
+        if parsed.path == "/public-stats":
+            data = {}
             try:
                 with httpx.Client(timeout=8) as client:
-                    stats = get_home_database_stats(client)
+                    data = get_home_database_stats(client)
             except Exception:
-                stats = None
-            self.send_html(render_home(stats=stats))
+                data = {"product_total": 0, "quote_items": 0, "known_profiles": 0}
+            payload = json.dumps(data).encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
             return
         if parsed.path.lower() == "/admin":
             if not is_admin_authenticated(self.headers.get("Cookie")):
