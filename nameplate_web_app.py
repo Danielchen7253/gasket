@@ -2267,8 +2267,7 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
     pagination_html = f"""
 <div class="admin-pagination">
 <div class="admin-result-summary">
-<strong>{esc(applied_text)}</strong>：共 <strong>{esc(total)}</strong> 条；每页 <strong>{esc(per_page)}</strong> 条；第 <strong>{esc(page_num)}</strong> / <strong>{esc(total_pages)}</strong> 页；本页显示 <strong>{esc(shown_from)}-{esc(shown_to)}</strong> 条。
-<br><span class="muted">分页核对：{esc(per_page)} × {esc(total_pages)} = {esc(full_page_capacity)} 个位置；最后一页实际 {esc(last_page_count)} 条。</span>
+<strong>{esc(applied_text)}</strong>：共 <strong>{esc(total)}</strong> 条；每页 <strong>{esc(per_page)}</strong> 条；第 <strong>{esc(page_num)}</strong> / <strong>{esc(total_pages)}</strong> 页；本页显示 <strong>{esc(shown_from)}-{esc(shown_to)}</strong> 条。<span class="muted">分页核对：{esc(per_page)} × {esc(total_pages)} = {esc(full_page_capacity)} 个位置；最后一页实际 {esc(last_page_count)} 条。</span>
 </div>
 <div class="admin-page-controls">
 {f"<a class='admin-page-link' href='{esc(prev_link)}'>上一页</a>" if prev_link else "<span class='admin-page-link disabled'>上一页</span>"}
