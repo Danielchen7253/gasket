@@ -3695,6 +3695,18 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
+        if parsed.path.startswith("/static/"):
+            target = (ROOT / parsed.path.lstrip("/")).resolve()
+            if not str(target).startswith(str((ROOT / "static").resolve())) or not target.exists():
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            data = target.read_bytes()
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", mimetypes.guess_type(str(target))[0] or "application/octet-stream")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if parsed.path == "/preview":
             product_id = int(parse_qs(parsed.query).get("product_id", ["39"])[0])
             with httpx.Client(timeout=30) as client:
