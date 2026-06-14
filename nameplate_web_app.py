@@ -2105,12 +2105,14 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
 </section>
 {stats_html}
 <section>
+<div class="admin-filter-body" style="max-width:none;margin-bottom:12px">
+<label for="admin-product-search">搜索产品数据库</label>
+<div class="admin-search-line"><input id="admin-product-search" type="search" placeholder="例如：Whirlpool WRF535SMHZ03；缺图片 3门 True；或：完整度<80 置信度>70"><button class="admin-search-button" type="button" id="admin-product-search-button">搜索</button></div>
+<div class="admin-filter-help">支持：品牌/型号关键词、缺图片、有图片、缺资料、资料完整、1门/2门/3门/4门、完整度&lt;80、置信度&gt;70。</div>
+</div>
 <details class="admin-filter">
 <summary>筛选产品资料</summary>
 <div class="admin-filter-body">
-<label for="admin-product-search">输入你想要的筛选条件</label>
-<div class="admin-search-line"><input id="admin-product-search" type="search" placeholder="例如：缺图片 3门 True；或：完整度<80 置信度>70"><button class="admin-search-button" type="button" id="admin-product-search-button">搜索</button></div>
-<div class="admin-filter-help">支持：品牌/型号关键词、缺图片、有图片、缺资料、资料完整、1门/2门/3门/4门、完整度&lt;80、置信度&gt;70。</div>
 <div class="admin-filter-row" aria-label="图片状态筛选">
 <span class="admin-filter-title">图片</span>
 <button class="admin-filter-chip active" type="button" data-product-filter-group="image" data-filter-value="all">全部</button>
