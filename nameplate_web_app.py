@@ -3123,7 +3123,7 @@ def get_admin_gasket_catalog_page(client: httpx.Client, raw_query: str = "", pag
     page_num, per_page, offset = admin_page_bounds(page_num, per_page)
     query_text = (raw_query or "").strip()
     params = {
-        "select": "id,profile_code,profile_name,profile_family,profile_type,profile_style,style_code,mounting_method,magnetic,material,color,profile_image_url,cross_section_width_in,cross_section_height_in,dart_width_in,lip_width_in,magnet_width_in,bulb_count,overall_width_in,overall_height_in,base_width_in,base_height_in,dart_depth_in,dart_head_width_in,screw_flange_width_in,snap_track_width_in,compression_bulb_width_in,compression_bulb_height_in,magnet_cavity_width_in,magnet_cavity_height_in,detailed_dimensions,manufacturing_notes,common_use_cases,coverage_notes,estimated_market_share_pct,tested_finished_gasket_count,linked_application_count,source_name,source_url,confidence_score,data_status,updated_at",
+        "select": "id,profile_code,profile_name,profile_family,profile_type,profile_style,style_code,mounting_method,magnetic,material,color,profile_image_url,cross_section_width_in,cross_section_height_in,dart_width_in,lip_width_in,magnet_width_in,bulb_count,overall_width_in,overall_height_in,base_width_in,base_height_in,dart_depth_in,dart_head_width_in,screw_flange_width_in,snap_track_width_in,compression_bulb_width_in,compression_bulb_height_in,magnet_cavity_width_in,magnet_cavity_height_in,detailed_dimensions,manufacturing_notes,common_use_cases,coverage_notes,estimated_market_share_pct,tested_finished_gasket_count,linked_application_count,source_name,source_url,confidence_score,data_status,created_at,updated_at",
         "order": "updated_at.desc.nullslast,id.desc",
         "limit": str(per_page),
         "offset": str(offset),
@@ -3254,7 +3254,7 @@ def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
 <td>{profile_table_image(item)}</td>
 <td>{esc(item.get('color'))}</td>
 <td>{esc(profile_dimension_summary(item))}</td>
-<td>{esc(short_datetime(item.get('updated_at')))}</td>
+<td>{esc(short_datetime(item.get('created_at') or item.get('updated_at')))}</td>
 </tr>"""
         )
     rows_html = "\n".join(rows) if rows else "<tr><td colspan='8'>没有找到密封条记录。</td></tr>"
