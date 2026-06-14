@@ -377,11 +377,22 @@ def search_brave_images(client: httpx.Client, product: dict) -> list[dict]:
             timeout=30,
         )
         response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        try:
+            message = exc.response.json().get("message") or exc.response.text[:180]
+        except Exception:
+            message = exc.response.text[:180]
+        print(f"Brave image search skipped for {product['brand']} {product['equipment_model']}: HTTP {exc.response.status_code}; {message}")
+        return []
     except httpx.HTTPError as exc:
         print(f"Brave image search skipped for {product['brand']} {product['equipment_model']}: {exc.__class__.__name__}")
         return []
+    data = response.json()
+    if data.get("error"):
+        print(f"Brave image search skipped for {product['brand']} {product['equipment_model']}: {data.get('error')}")
+        return []
     rows = []
-    for item in response.json().get("results", [])[:10]:
+    for item in data.get("results", [])[:10]:
         image = item.get("properties") or {}
         thumbnail = item.get("thumbnail") or {}
         rows.append(
@@ -960,8 +971,8 @@ def main() -> None:
             promoted_this = promote_best_image(client, product, saved)
             if not promoted_this and not PROMOTE_EXISTING_ONLY:
                 raw_candidates = []
-                raw_candidates.extend(search_serpapi(client, product))
                 raw_candidates.extend(search_brave_images(client, product))
+                raw_candidates.extend(search_serpapi(client, product))
                 raw_candidates.extend(search_bing_api_images(client, product))
                 raw_candidates.extend(search_google_cse(client, product))
                 if not raw_candidates:

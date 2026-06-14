@@ -283,11 +283,11 @@ def quick_promote_product_image(client, product: dict, limit: int = 6) -> bool:
             reverse=True,
         )
 
-    raw_candidates = strong(search_serpapi(client, product))[:limit]
+    raw_candidates = strong(search_brave_images(client, product))[:limit]
+    if not raw_candidates:
+        raw_candidates = strong(search_serpapi(client, product))[:limit]
     if not raw_candidates:
         raw_candidates = strong(search_google_cse(client, product))[:limit]
-    if not raw_candidates:
-        raw_candidates = strong(search_brave_images(client, product))[:limit]
     if not raw_candidates:
         raw_candidates = strong(search_bing_api_images(client, product))[:limit]
     if not raw_candidates:

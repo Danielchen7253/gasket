@@ -16,6 +16,8 @@ services:
         sync: false
       - key: GOOGLE_PLACES_BROWSER_KEY
         sync: false
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
       - key: SHOPIFY_STORE_DOMAIN
         sync: false
       - key: SHOPIFY_STOREFRONT_ACCESS_TOKEN
@@ -45,6 +47,8 @@ services:
         sync: false
       - key: SERPAPI_KEY
         sync: false
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
       - key: GOOGLE_CSE_KEY
         sync: false
       - key: GOOGLE_CSE_CX
@@ -65,6 +69,8 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: SERPAPI_KEY
+        sync: false
+      - key: BRAVE_SEARCH_API_KEY
         sync: false
       - key: GOOGLE_CSE_KEY
         sync: false
