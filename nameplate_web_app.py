@@ -1782,6 +1782,32 @@ def render_no_match(brand: str, model: str, upload_url: str | None, nameplate_da
 <p><a class="button" href="/">Try another nameplate</a></p></section>""")
 
 
+def render_model_number_guide() -> bytes:
+    return page("Find Model Number", """
+<section><h2>How to Find Your Refrigerator Model Number</h2>
+<p class="muted">Take a clear photo of the nameplate label. The model number is usually printed near Brand, Model, or Model No.</p>
+<div class="grid">
+<div class="metric"><span>Step 1</span><strong>Open the door</strong><p>Look inside the refrigerator, on the side wall, door frame, drawer edge, or rear label.</p></div>
+<div class="metric"><span>Step 2</span><strong>Find the nameplate</strong><p>It is usually a white or silver label with brand, model, serial, voltage, and refrigerant.</p></div>
+<div class="metric"><span>Step 3</span><strong>Photo must be readable</strong><p>Include the full model. Do not crop off suffixes such as 03, HC, S/2, or -L.</p></div>
+</div>
+<section><h3>Common mistakes</h3><p>Serial number is not the model number. A door photo alone is not enough. Letters and numbers can be confused, such as 0/O, 1/I, 8/S.</p></section>
+<p><a class="button" href="/">Back to upload</a></p></section>""")
+
+
+def render_gasket_profile_guide() -> bytes:
+    return page("Gasket Profile Guide", """
+<section><h2>How to Confirm Your Gasket Profile</h2>
+<p class="muted">The gasket profile is the cross-section shape on the back of the door gasket. It confirms how the gasket locks into the door.</p>
+<div class="grid">
+<div class="metric"><span>Step 1</span><strong>Lift one corner</strong><p>Pull one gasket corner slightly away from the door. Do not tear it off.</p></div>
+<div class="metric"><span>Step 2</span><strong>Take a close-up photo</strong><p>Photograph the side/cross-section shape, not only the front face of the gasket.</p></div>
+<div class="metric"><span>Step 3</span><strong>Measure if possible</strong><p>Measure overall width, overall height, and the insert/base width.</p></div>
+</div>
+<section><h3>Common profile types</h3><p>Dart, Push-in, Screw-in, Snap-in, and special profiles. If you are not sure, send the close-up photo and we will confirm.</p></section>
+<p><a class="button" href="/">Back to upload</a></p></section>""")
+
+
 def render_result(product: dict, quote_items: list[dict], request: dict | None, upload_url: str | None) -> bytes:
     nameplate_data = (request or {}).get("nameplate_data") or {}
     pending_new_product = is_unconfirmed_new_product(product)
@@ -3620,6 +3646,12 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/":
             self.send_html(render_home())
+            return
+        if parsed.path == "/guide/model-number":
+            self.send_html(render_model_number_guide())
+            return
+        if parsed.path == "/guide/gasket-profile":
+            self.send_html(render_gasket_profile_guide())
             return
         if parsed.path == "/public-stats":
             data = {}

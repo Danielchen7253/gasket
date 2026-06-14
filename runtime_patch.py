@@ -73,7 +73,7 @@ Automatic reading is unavailable right now. The uploaded photo is saved; enter t
 <input type="hidden" name="customer_phone" value="{esc(customer.get('customer_phone') or '')}">
 <div class="grid">
 <div><label>Brand</label><input name="brand" value="{esc(brand or product.get('brand') or '')}"></div>
-<div><label>Model</label><input class="model-confirm-input" name="equipment_model" value="{esc(model or product.get('equipment_model') or '')}">{_model_check_notice()}</div>
+<div><label>Model</label><input class="model-confirm-input" name="equipment_model" value="{esc(model or product.get('equipment_model') or '')}">{_model_check_notice()}<p><a class="button" href="/guide/model-number">How to find the model number</a></p></div>
 <div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div>
 <div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or product.get('manufacturer') or '')}"></div>
 <div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div>
@@ -92,6 +92,33 @@ Automatic reading is unavailable right now. The uploaded photo is saved; enter t
 <div class="image-viewer-tools"><button type="button" data-zoom="out">-</button><button type="button" data-zoom="in">+</button><button type="button" data-close-viewer>Close</button></div>
 <div class="image-viewer-stage"><img id="image-viewer-img" alt="Nameplate enlarged"></div>
 </div>""")
+
+    def guide_model_number():
+        return g["page"]("Find Model Number", f"""
+<section><h2>How to Find Your Refrigerator Model Number</h2>
+<p class="muted">Take a clear photo of the nameplate label. The model number is usually printed near Brand, Model, or Model No.</p>
+<div class="grid">
+<div class="metric"><span>Step 1</span><strong>Open the door</strong><p>Look inside the refrigerator, on the side wall, door frame, drawer edge, or rear label.</p></div>
+<div class="metric"><span>Step 2</span><strong>Find the nameplate</strong><p>It is usually a white or silver label with brand, model, serial, voltage, and refrigerant.</p></div>
+<div class="metric"><span>Step 3</span><strong>Photo must be readable</strong><p>Include the full model. Do not crop off suffixes such as 03, HC, S/2, or -L.</p></div>
+</div>
+<section><h3>Common mistakes</h3><p>Serial number is not the model number. A door photo alone is not enough. Letters and numbers can be confused, such as 0/O, 1/I, 8/S.</p></section>
+<p><a class="button" href="/">Back to upload</a></p></section>""")
+
+    def guide_gasket_profile():
+        return g["page"]("Gasket Profile Guide", f"""
+<section><h2>How to Confirm Your Gasket Profile</h2>
+<p class="muted">The gasket profile is the cross-section shape on the back of the door gasket. It confirms how the gasket locks into the door.</p>
+<div class="grid">
+<div class="metric"><span>Step 1</span><strong>Lift one corner</strong><p>Pull one gasket corner slightly away from the door. Do not tear it off.</p></div>
+<div class="metric"><span>Step 2</span><strong>Take a close-up photo</strong><p>Photograph the side/cross-section shape, not only the front face of the gasket.</p></div>
+<div class="metric"><span>Step 3</span><strong>Measure if possible</strong><p>Measure overall width, overall height, and the insert/base width.</p></div>
+</div>
+<section><h3>Common profile types</h3><p>Dart, Push-in, Screw-in, Snap-in, and special profiles. If you are not sure, send the close-up photo and we will confirm.</p></section>
+<p><a class="button" href="/">Back to upload</a></p></section>""")
+
+    def guide_links():
+        return """<div class="guide-links"><a class="button" href="/guide/model-number">How to find your refrigerator model</a><a class="button" href="/guide/gasket-profile">How to confirm gasket profile</a></div>"""
 
     def patched_render_home(message=""):
         warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
@@ -121,6 +148,7 @@ main{max-width:none;padding:0}
 .home-form .grid{grid-template-columns:1fr 1fr;margin-top:8px}
 .home-stats{width:100%;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:16px 0 0}
 .home-stats .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.guide-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
 @media(max-width:900px){.work-zone{grid-template-columns:1fr}.home-form .grid{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr}.upload-row button{width:100%;justify-content:center;text-align:center}}
 @media(max-width:900px){.home-stats .summary{grid-template-columns:1fr}}
 </style>"""
@@ -129,7 +157,7 @@ main{max-width:none;padding:0}
 <div class="work-shell"><div class="work-zone"><div style="width:100%">
 <form id="upload" class="home-form" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
 <div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div></div>
-<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div></form>
+<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>{guide_links()}</form>
 <section class="home-stats"><h2>Fit database coverage</h2><div class="summary">
 <div class="metric"><span>Refrigerator models</span><strong data-public-stat="product_total">...</strong></div>
 <div class="metric"><span>Door gasket records</span><strong data-public-stat="quote_items">...</strong></div>
@@ -238,7 +266,7 @@ main{max-width:none;padding:0}
             image = item.get("gasket_image_url")
             image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<div class='muted'>Gasket</div>"
             dims = gasket_size(item)
-            rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)}</strong><p>{esc(dims)}</p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div><div></div></label>""")
+            rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)}</strong><p>{esc(dims)}</p><p><a href="/guide/gasket-profile">Confirm gasket profile</a></p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div><div></div></label>""")
 
         if not quote_items and not pending_new:
             rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
@@ -483,6 +511,12 @@ window.initShippingAutocomplete=function(){{
 
     def patched_do_GET(self):
         parsed = g["urlparse"](self.path)
+        if parsed.path == "/guide/model-number":
+            self.send_html(guide_model_number())
+            return
+        if parsed.path == "/guide/gasket-profile":
+            self.send_html(guide_gasket_profile())
+            return
         if parsed.path == "/product-status":
             product_id = int(g["parse_qs"](parsed.query).get("product_id", ["0"])[0])
             if product_id:
