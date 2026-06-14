@@ -2052,7 +2052,9 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
             recent_search_buttons.append(f"""<button type="button" class="admin-filter-chip" data-product-query="{esc(label)}">{esc(label)}</button>""")
     recent_search_html = "".join(recent_search_buttons) or "<span class='muted'>暂无最近搜索记录</span>"
     stats_html = f"""
-<section><h2>数据库看板</h2>
+<section><details class="admin-filter">
+<summary>数据库看板</summary>
+<div class="admin-filter-body" style="max-width:none">
 <div class="summary">
 <div class="metric"><span>产品型号</span><strong>{esc(stats.get('product_total'))}</strong></div>
 <div class="metric"><span>已有主图</span><strong>{esc(stats.get('product_images'))}</strong><span class="muted">{esc(stats.get('product_image_rate'))}%</span></div>
@@ -2067,6 +2069,8 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
 <details class="admin-filter" style="margin-top:14px">
 <summary>最近搜索型号</summary>
 <div class="admin-filter-body"><div class="admin-filter-row">{recent_search_html}</div></div>
+</details>
+</div>
 </details>
 </section>"""
     return page("后台产品数据库", f"""
