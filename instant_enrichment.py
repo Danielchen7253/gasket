@@ -228,7 +228,9 @@ def upsert_known_product_from_nameplate(
 
 def missing_tasks(client: httpx.Client, product: dict[str, Any]) -> list[dict[str, Any]]:
     tasks: list[dict[str, Any]] = []
-    if not is_displayable_image_url(client, product.get("product_image_url"), timeout=3.0):
+    image_confidence = float(product.get("product_image_confidence") or 0)
+    trusted_existing_image = bool(product.get("product_image_source_url") and image_confidence >= 60)
+    if not trusted_existing_image or not is_displayable_image_url(client, product.get("product_image_url"), timeout=3.0):
         tasks.append({"task_type": "product_image", "field_name": "product_image_url", "priority": 10})
     if not product.get("product_type") or not product.get("door_positions") or not product.get("door_count"):
         tasks.append({"task_type": "product_structure", "field_name": "product_type_and_door_layout", "priority": 20})
@@ -447,7 +449,9 @@ def run_image_task(product_id: int, nameplate_data: dict[str, Any] | None = None
         product = get_product(client, product_id)
         if not product:
             return
-        if is_displayable_image_url(client, product.get("product_image_url"), timeout=3.0):
+        image_confidence = float(product.get("product_image_confidence") or 0)
+        trusted_existing_image = bool(product.get("product_image_source_url") and image_confidence >= 60)
+        if trusted_existing_image and is_displayable_image_url(client, product.get("product_image_url"), timeout=3.0):
             return
         try:
             mark_task(client, product_id, "product_image", "running")
@@ -501,7 +505,9 @@ def run_quick_image_task(product_id: int, nameplate_data: dict[str, Any] | None 
         product = get_product(client, product_id)
         if not product:
             return None
-        if is_displayable_image_url(client, product.get("product_image_url"), timeout=3.0):
+        image_confidence = float(product.get("product_image_confidence") or 0)
+        trusted_existing_image = bool(product.get("product_image_source_url") and image_confidence >= 60)
+        if trusted_existing_image and is_displayable_image_url(client, product.get("product_image_url"), timeout=3.0):
             return product
         try:
             mark_task(client, product_id, "product_image", "running")

@@ -82,7 +82,6 @@ Automatic reading is unavailable right now. The uploaded photo is saved; enter t
 <div><label>Product type</label><input name="product_type" value="{esc(product.get('product_type') or '')}"></div>
 <div><label>Door count</label><input name="door_count" value="{esc(product.get('door_count') or '')}"></div>
 <div><label>Door layout</label><input name="door_layout" value="{esc(product.get('door_layout') or '')}"></div>
-<div><label>Product image URL</label><input name="product_image_url" value="{esc(product.get('product_image_url') or '')}"></div>
 <div><label>Active / discontinued status</label><input name="lifecycle_status" value="{esc(product.get('lifecycle_status') or '')}"></div>
 </div>
 <input type="hidden" name="raw_text" value="{esc(raw_text)}">
@@ -199,6 +198,9 @@ main{max-width:none;padding:0}
         nameplate_data = (request or {}).get("nameplate_data") or {}
         pending_new = g["is_unconfirmed_new_product"](product)
         product_img = product.get("product_image_url")
+        image_confidence = float(product.get("product_image_confidence") or 0)
+        if product_img and (not product.get("product_image_source_url") or image_confidence < 60):
+            product_img = None
         if product_img:
             try:
                 from product_image_search_crawler import is_displayable_image_url
@@ -484,7 +486,6 @@ window.initShippingAutocomplete=function(){{
                 "manufacturer": fields.get("manufacturer", {}).get("text") or product.get("manufacturer"),
                 "product_type": fields.get("product_type", {}).get("text") or product.get("product_type"),
                 "door_layout": fields.get("door_layout", {}).get("text") or product.get("door_layout"),
-                "product_image_url": fields.get("product_image_url", {}).get("text") or product.get("product_image_url"),
                 "lifecycle_status": fields.get("lifecycle_status", {}).get("text") or product.get("lifecycle_status"),
                 "data_status": product.get("data_status") or "customer_confirmed",
                 "data_confidence": product.get("data_confidence") or 70,

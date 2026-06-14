@@ -757,7 +757,7 @@ def update_product(client: httpx.Client, product_id: int, research: dict[str, An
         payload["door_layout_confidence"] = existing.get("door_layout_confidence")
         payload["door_layout_source"] = existing.get("door_layout_source")
         payload["door_layout_updated_at"] = now
-    if product.get("product_image_url") and os.getenv("AI_RESEARCH_WRITE_PRODUCT_IMAGE", "1") == "1":
+    if product.get("product_image_url") and os.getenv("AI_RESEARCH_WRITE_PRODUCT_IMAGE", "0") == "1":
         payload.update(
             {
                 "product_image_url": product.get("product_image_url"),

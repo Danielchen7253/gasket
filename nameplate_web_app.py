@@ -516,7 +516,10 @@ def identify_nameplate(image_bytes: bytes, filename: str) -> dict:
     prompt = (
         "Read this refrigerator/freezer equipment nameplate. Return JSON only with keys: "
         "brand, model, serial_number, manufacturer, manufacture_date, refrigerant, voltage, raw_text, confidence. "
-        "Use null for missing fields. The model is the equipment model number, not the serial number."
+        "Use null for missing fields. The model is the equipment model number, not the serial number. "
+        "The brand must be explicitly visible as a brand/logo/company on the nameplate; do not infer or guess it from web knowledge. "
+        "Do not use certification or testing organizations such as Intertek, UL, CSA, NSF, ETL, or ENERGY STAR as the brand. "
+        "If no actual product brand is visible, return null for brand."
     )
     payload = {
         "model": OPENAI_NAMEPLATE_MODEL,
