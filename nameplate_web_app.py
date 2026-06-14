@@ -40,12 +40,21 @@ ROOT = Path(__file__).resolve().parent
 UPLOAD_DIR = ROOT / "uploads" / "customer_nameplates"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 BACKGROUND_REFRESHING: set[int] = set()
+DEMO_QUERY_PRODUCT_IDS = {"1": 39}
 
 MODEL_ALIAS_OVERRIDES = {
     ("SUBZERO", "685592"): "685/S/2",
     ("SUBZERO", "68592"): "685/S/2",
     ("SUBZERO", "685S2"): "685/S/2",
 }
+
+
+def demo_query_key(brand: str = "", model: str = "") -> str | None:
+    for value in (brand, model):
+        key = (value or "").strip()
+        if key in DEMO_QUERY_PRODUCT_IDS:
+            return key
+    return None
 
 
 def esc(value) -> str:
@@ -3828,6 +3837,24 @@ class Handler(BaseHTTPRequestHandler):
         file_field = fields.get("nameplate")
         customer = {key: fields.get(key, {}).get("text") or None for key in ("customer_name", "customer_email", "customer_phone")}
         if path == "/read-nameplate":
+            demo_key = demo_query_key(brand, model)
+            if demo_key:
+                with httpx.Client(timeout=30) as client:
+                    product = get_product(client, DEMO_QUERY_PRODUCT_IDS[demo_key])
+                    if not product:
+                        self.send_html(render_home("Demo product record was not found."), HTTPStatus.NOT_FOUND)
+                        return
+                    demo_request = {
+                        "nameplate_data": {
+                            "brand": product.get("brand"),
+                            "model": product.get("equipment_model"),
+                            "serial_number": "DEMO-001",
+                            "raw_text": "Demo query 1: first test refrigerator model and first test gasket.",
+                            "confidence": 100,
+                        }
+                    }
+                    self.send_html(render_result(product, get_quote_items(client, product["id"]), demo_request, None))
+                    return
             if not (file_field and file_field.get("filename") and file_field.get("data")):
                 self.send_html(render_home("Please upload a nameplate photo first."), HTTPStatus.BAD_REQUEST)
                 return
