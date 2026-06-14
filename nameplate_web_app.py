@@ -1057,8 +1057,7 @@ def admin_nav(active: str = "orders") -> str:
         f"""<a class="button {'active' if key == active else ''}" href="{href}">{label}</a>"""
         for key, label, href in items
     ]
-    links.append("""<a class="button logout" href="/ADMIN/logout">退出登录</a>""")
-    return f"""<div class="admin-actions">{''.join(links)}</div>"""
+    return f"""<div class="admin-actions admin-nav-row"><div class="admin-nav-left">{''.join(links)}</div><a class="button logout" href="/ADMIN/logout">退出登录</a></div>"""
 
 
 def admin_page_bounds(page_num: int, per_page: int) -> tuple[int, int, int]:
@@ -1672,6 +1671,10 @@ h1{{font-size:34px;margin:0 0 8px}} h2{{font-size:20px;margin:0 0 14px}} p{{colo
 .upload-row{{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}}
 label{{display:block;font-size:13px;color:#687385;margin-bottom:6px}} input{{width:100%;border:1px solid #dbe2ea;border-radius:6px;padding:10px}}
 button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-height:40px;padding:0 16px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center}}
+.admin-actions{{display:flex;align-items:center;gap:14px 18px;flex-wrap:wrap;width:100%;margin-bottom:18px}}
+.admin-nav-left{{display:flex;align-items:center;gap:12px;flex-wrap:wrap}}
+.admin-actions .logout{{margin-left:auto}}
+.admin-actions .active{{background:#0d1f2a}}
 .metric{{border:1px solid #dbe2ea;border-radius:8px;padding:12px;background:#fbfdfe}} .metric span,.muted{{color:#687385}} .metric strong{{font-size:24px}}
 .photo{{width:100%;height:320px;object-fit:contain;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc}}
 .plate{{width:100%;height:190px;object-fit:contain;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc}}
