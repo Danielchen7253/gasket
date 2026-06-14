@@ -3010,6 +3010,28 @@ def finished_gasket_dimension_summary(item: dict) -> str:
     return ""
 
 
+def finished_gasket_side_summary(item: dict) -> str:
+    pairs = [
+        ("上", item.get("top_side_in")),
+        ("下", item.get("bottom_side_in")),
+        ("左", item.get("left_side_in")),
+        ("右", item.get("right_side_in")),
+    ]
+    rendered = [f'{label} {value}"' for label, value in pairs if value not in (None, "")]
+    return " / ".join(rendered) if rendered else "四边尺寸待补"
+
+
+def finished_gasket_image_links(item: dict) -> str:
+    links = []
+    if item.get("gasket_image_url"):
+        links.append(f'<a href="{esc(item.get("gasket_image_url"))}" target="_blank" rel="noopener">密封条图</a>')
+    if item.get("dimensioned_gasket_image_url"):
+        links.append(f'<a href="{esc(item.get("dimensioned_gasket_image_url"))}" target="_blank" rel="noopener">尺寸图</a>')
+    if item.get("profile_diagram_image_url"):
+        links.append(f'<a href="{esc(item.get("profile_diagram_image_url"))}" target="_blank" rel="noopener">横截面图</a>')
+    return " / ".join(links) if links else "<span class='muted'>图片待补</span>"
+
+
 def get_admin_gasket_catalog_page(client: httpx.Client, raw_query: str = "", page_num: int = 1, per_page: int = 50) -> dict:
     page_num, per_page, offset = admin_page_bounds(page_num, per_page)
     query_text = (raw_query or "").strip()
@@ -3057,7 +3079,7 @@ def get_admin_product_gaskets_page(client: httpx.Client, raw_query: str = "", pa
     page_num, per_page, offset = admin_page_bounds(page_num, per_page)
     query_text = (raw_query or "").strip()
     params = {
-        "select": "*,gasket_profiles(id,profile_code,profile_name,profile_type,profile_style,mounting_method,color,estimated_market_share_pct),gasket_finished_gaskets(id,finished_gasket_code,part_number,dimensions_text,width_in,height_in,perimeter_in,color,price_usd),refrigerator_products(id,brand,equipment_model,product_type,door_count,door_layout)",
+        "select": "*,gasket_profiles(id,profile_code,profile_name,profile_type,profile_style,mounting_method,color,estimated_market_share_pct),gasket_finished_gaskets(id,finished_gasket_code,part_number,dimensions_text,width_in,height_in,perimeter_in,top_side_in,bottom_side_in,left_side_in,right_side_in,inner_width_in,inner_height_in,outer_width_in,outer_height_in,corner_type,weld_count,gasket_image_url,dimensioned_gasket_image_url,profile_diagram_image_url,dimension_source,dimension_confidence_score,color,price_usd),refrigerator_products(id,brand,equipment_model,product_type,door_count,door_layout)",
         "order": "updated_at.desc.nullslast,id.desc",
         "limit": str(per_page),
         "offset": str(offset),
@@ -3122,7 +3144,7 @@ def get_catalog_applications(client: httpx.Client, catalog_id: int, limit: int =
     response = client.get(
         f"{SUPABASE_URL}/rest/v1/gasket_profile_applications",
         params={
-            "select": "id,application_brand,application_model,application_door_position,application_label,evidence_summary,match_confidence,data_status,gasket_finished_gaskets(id,part_number,finished_gasket_code,dimensions_text,price_usd),refrigerator_products(id,brand,equipment_model)",
+            "select": "id,application_brand,application_model,application_door_position,application_label,evidence_summary,match_confidence,data_status,gasket_finished_gaskets(id,part_number,finished_gasket_code,dimensions_text,width_in,height_in,perimeter_in,top_side_in,bottom_side_in,left_side_in,right_side_in,dimensioned_gasket_image_url,price_usd),refrigerator_products(id,brand,equipment_model)",
             "gasket_profile_id": f"eq.{catalog_id}",
             "order": "match_confidence.desc.nullslast,id.desc",
             "limit": str(limit),
@@ -3209,6 +3231,7 @@ def render_admin_product_gaskets(gaskets_page: dict) -> bytes:
         profile = item.get("gasket_profiles") or {}
         finished = item.get("gasket_finished_gaskets") or {}
         dimensions = finished_gasket_dimension_summary(finished)
+        side_dimensions = finished_gasket_side_summary(finished)
         product_label = f"{product.get('brand') or item.get('application_brand') or ''} {product.get('equipment_model') or item.get('application_model') or ''}".strip()
         rows.append(
             f"""<tr>
@@ -3216,13 +3239,15 @@ def render_admin_product_gaskets(gaskets_page: dict) -> bytes:
 <td>{f'<a href="/ADMIN?product_id={esc(product.get("id"))}"><strong>{esc(product_label)}</strong></a>' if product.get('id') else f'<strong>{esc(product_label)}</strong>'}</td>
 <td>{esc(item.get('application_label') or item.get('application_door_position'))}</td>
 <td>{esc(finished.get('part_number') or finished.get('finished_gasket_code'))}<br><span class="muted">{esc(dimensions)}</span></td>
+<td>{esc(side_dimensions)}<br><span class="muted">周长 {esc(finished.get('perimeter_in'))}\"</span></td>
+<td>{finished_gasket_image_links(finished)}<br><span class="muted">{esc(finished.get('dimension_source'))} / {esc(finished.get('dimension_confidence_score'))}%</span></td>
 <td><a href="/ADMIN?gasket_catalog_id={esc(profile.get('id'))}">{esc(profile.get('profile_code'))}</a><br><span class="muted">{esc(profile_type_zh(profile.get('profile_type')))}</span></td>
 <td>{esc(profile.get('profile_style') or profile.get('profile_name'))}<br><span class="muted">{esc(profile.get('mounting_method'))}</span></td>
 <td>{money(finished.get('price_usd'))}<br><span class="muted">{esc(item.get('match_confidence'))}% / {esc(zh_status(item.get('data_status')))}</span></td>
 <td>{esc(item.get('source_name'))}<br><span class="muted">{esc(short_datetime(item.get('updated_at')))}</span></td>
 </tr>"""
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='8'>没有找到关联数据库记录。</td></tr>"
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='10'>没有找到关联数据库记录。</td></tr>"
     query_text = gaskets_page.get("query") or ""
     page_num = int(gaskets_page.get("page") or 1)
     per_page = int(gaskets_page.get("per_page") or 50)
@@ -3269,7 +3294,7 @@ def render_admin_product_gaskets(gaskets_page: dict) -> bytes:
 <div class="admin-filter-help">同一种横截面可以做成很多不同长宽的成品密封条，也可以适配多个品牌型号。</div>
 </div>
 {pagination_html}
-<table class="admin-table"><thead><tr><th>ID</th><th>冰箱型号</th><th>门位</th><th>成品密封条</th><th>横截面</th><th>样式/安装</th><th>价格/匹配</th><th>来源/时间</th></tr></thead><tbody>{rows_html}</tbody></table>
+<table class="admin-table"><thead><tr><th>ID</th><th>冰箱型号</th><th>门位</th><th>成品密封条</th><th>四边尺寸</th><th>图片/尺寸来源</th><th>横截面</th><th>样式/安装</th><th>价格/匹配</th><th>来源/时间</th></tr></thead><tbody>{rows_html}</tbody></table>
 {pagination_html}
 </section>""")
 
@@ -3304,9 +3329,9 @@ def render_admin_gasket_catalog_detail(item: dict, applications: list[dict]) -> 
         finished = row.get("gasket_finished_gaskets") or {}
         product_label = f"{product.get('brand') or row.get('application_brand') or ''} {product.get('equipment_model') or row.get('application_model') or ''}".strip()
         app_rows.append(
-            f"""<tr><td><a href="/ADMIN?product_gasket_id={esc(row.get('id'))}">#{esc(row.get('id'))}</a></td><td>{f'<a href="/ADMIN?product_id={esc(product.get("id"))}">{esc(product_label)}</a>' if product.get('id') else esc(product_label)}</td><td>{esc(row.get('application_label') or row.get('application_door_position'))}</td><td>{esc(finished.get('part_number') or finished.get('finished_gasket_code'))}</td><td>{esc(finished_gasket_dimension_summary(finished))}</td><td>{esc(row.get('match_confidence'))}%</td></tr>"""
+            f"""<tr><td><a href="/ADMIN?product_gasket_id={esc(row.get('id'))}">#{esc(row.get('id'))}</a></td><td>{f'<a href="/ADMIN?product_id={esc(product.get("id"))}">{esc(product_label)}</a>' if product.get('id') else esc(product_label)}</td><td>{esc(row.get('application_label') or row.get('application_door_position'))}</td><td>{esc(finished.get('part_number') or finished.get('finished_gasket_code'))}</td><td>{esc(finished_gasket_dimension_summary(finished))}</td><td>{esc(finished_gasket_side_summary(finished))}</td><td>{finished_gasket_image_links(finished)}</td><td>{esc(row.get('match_confidence'))}%</td></tr>"""
         )
-    app_rows_html = "".join(app_rows) if app_rows else "<tr><td colspan='6'>暂无冰箱门位适配关联。</td></tr>"
+    app_rows_html = "".join(app_rows) if app_rows else "<tr><td colspan='8'>暂无冰箱门位适配关联。</td></tr>"
     return page("密封条数据库详情", f"""
 <style>
 pre{{white-space:pre-wrap;max-height:260px;overflow:auto;background:#f8fafc;border:1px solid #dbe2ea;border-radius:6px;padding:8px}}
@@ -3315,7 +3340,7 @@ pre{{white-space:pre-wrap;max-height:260px;overflow:auto;background:#f8fafc;bord
 .admin-table th{{background:#f8fafc;color:#687385}}
 </style>
 <section>{admin_nav('gasket_catalog')}<h2>密封条横截面 #{esc(item.get('id'))}</h2><div class="facts">{field_rows}</div></section>
-<section><h2>这个横截面做过哪些冰箱密封条</h2><table class="admin-table"><thead><tr><th>关联ID</th><th>冰箱型号</th><th>门位</th><th>成品/配件号</th><th>成品尺寸</th><th>匹配分</th></tr></thead><tbody>{app_rows_html}</tbody></table></section>
+<section><h2>这个横截面做过哪些冰箱密封条</h2><table class="admin-table"><thead><tr><th>关联ID</th><th>冰箱型号</th><th>门位</th><th>成品/配件号</th><th>宽高尺寸</th><th>四边尺寸</th><th>图片</th><th>匹配分</th></tr></thead><tbody>{app_rows_html}</tbody></table></section>
 <section><h2>完整原始记录</h2><pre>{esc(compact_json(item))}</pre></section>""")
 
 
@@ -3330,7 +3355,23 @@ def render_admin_product_gasket_detail(item: dict) -> bytes:
         ("门位", item.get("application_label") or item.get("application_door_position")),
         ("成品密封条", finished.get("part_number") or finished.get("finished_gasket_code")),
         ("成品尺寸", finished_gasket_dimension_summary(finished)),
+        ("上边尺寸", finished.get("top_side_in")),
+        ("下边尺寸", finished.get("bottom_side_in")),
+        ("左边尺寸", finished.get("left_side_in")),
+        ("右边尺寸", finished.get("right_side_in")),
+        ("内宽", finished.get("inner_width_in")),
+        ("内高", finished.get("inner_height_in")),
+        ("外宽", finished.get("outer_width_in")),
+        ("外高", finished.get("outer_height_in")),
+        ("周长", finished.get("perimeter_in")),
+        ("焊角类型", finished.get("corner_type")),
+        ("焊点数量", finished.get("weld_count")),
         ("成品颜色", finished.get("color")),
+        ("密封条图片", finished.get("gasket_image_url")),
+        ("尺寸标注图片", finished.get("dimensioned_gasket_image_url")),
+        ("横截面图片", finished.get("profile_diagram_image_url")),
+        ("尺寸来源", finished.get("dimension_source")),
+        ("尺寸置信度", finished.get("dimension_confidence_score")),
         ("成品价格样本", money(finished.get("price_usd"))),
         ("横截面ID", item.get("gasket_profile_id")),
         ("横截面编码", profile.get("profile_code")),
