@@ -208,6 +208,19 @@ main{max-width:none;padding:0}
                         product_img = None
             except Exception:
                 product_img = None
+        if not product_img:
+            try:
+                from fast_image_patch import quick_promote_product_image
+
+                with httpx.Client(timeout=55) as image_client:
+                    promoted = quick_promote_product_image(image_client, product, limit=8)
+                    if promoted:
+                        refreshed = g["get_product"](image_client, product["id"])
+                        if refreshed:
+                            product = refreshed
+                            product_img = product.get("product_image_url")
+            except Exception as exc:
+                print(f"foreground image fill failed for product {product.get('id')}: {exc}", flush=True)
         g["trigger_background_refresh"](product["id"], not product_img, not quote_items)
         needs_image = not bool(product_img)
         needs_gasket = not bool(quote_items)
