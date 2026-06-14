@@ -347,6 +347,9 @@ def search_serpapi(client: httpx.Client, product: dict) -> list[dict]:
         print(f"SerpApi image search skipped for {product['brand']} {product['equipment_model']}: HTTP {exc.response.status_code}")
         return []
     data = response.json()
+    if data.get("error"):
+        print(f"SerpApi image search skipped for {product['brand']} {product['equipment_model']}: {data.get('error')}")
+        return []
     rows = []
     for item in data.get("images_results", [])[:10]:
         rows.append(
