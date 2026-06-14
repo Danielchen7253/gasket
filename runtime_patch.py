@@ -264,9 +264,9 @@ main{max-width:none;padding:0}
             door_key = item.get("door_position") or f"door_{index}"
             price = float(item.get("final_price_usd") or 0)
             image = item.get("gasket_image_url")
-            image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<div class='muted'>Gasket</div>"
+            image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<span>Gasket</span>"
             dims = gasket_size(item)
-            rows.append(f"""<label class="item"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked>{image_html}<div><strong>{esc(door_label)}</strong><p>{esc(dims)}</p><p><a href="/guide/gasket-profile">Confirm gasket profile</a></p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div><div></div></label>""")
+            rows.append(f"""<label class="gasket-option"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked><div class="gasket-thumb">{image_html}</div><div class="gasket-copy"><strong>{esc(door_label)}</strong><p>{esc(dims)}</p><a class="gasket-help" href="/guide/gasket-profile">How to confirm gasket profile</a></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div></label>""")
 
         if not quote_items and not pending_new:
             rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
@@ -275,6 +275,18 @@ main{max-width:none;padding:0}
         rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
         return g["page"]("Matched Gasket Quote", f"""
 <style>
+.gasket-option{{display:grid;grid-template-columns:28px 112px minmax(220px,1fr) 128px;gap:12px;align-items:center;border:1px solid #dbe2ea;border-radius:8px;padding:10px 14px;margin:8px 0;background:#fff}}
+.gasket-option input{{justify-self:center}}
+.gasket-thumb{{width:96px;height:96px;border:1px solid #dbe2ea;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#6b7280;font-size:13px}}
+.gasket-thumb img{{width:100%;height:100%;object-fit:contain;display:block}}
+.gasket-copy{{justify-self:end;width:100%;max-width:360px}}
+.gasket-copy strong{{display:block;color:#3f4b5f;margin-bottom:8px}}
+.gasket-copy p{{margin:0 0 10px;color:#56657a}}
+.gasket-help{{display:inline-block;font-size:13px;color:#007c89;text-decoration:none}}
+.gasket-help:hover{{text-decoration:underline}}
+.gasket-option .price{{text-align:right}}
+.gasket-option .price strong{{font-size:24px;color:#677181}}
+.gasket-option .price small{{display:block;color:#6b7280}}
 .checkout-actions{{display:flex;justify-content:flex-end;margin-top:18px}}
 .shipping-panel{{display:none;margin-top:18px;border:1px solid #dbe2ea;background:#fbfdfe;border-radius:8px;padding:16px}}
 .shipping-panel.is-open{{display:block}}
@@ -282,7 +294,7 @@ main{max-width:none;padding:0}
 .shipping-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}}
 .shipping-grid .wide{{grid-column:span 2}}
 .checkout-error{{display:none;margin-top:12px;border:1px solid #f2b8b5;background:#fff1f0;color:#5f1410;border-radius:8px;padding:12px}}
-@media(max-width:760px){{.checkout-actions{{display:block}}.checkout-actions button{{width:100%;justify-content:center}}.shipping-grid{{grid-template-columns:1fr}}.shipping-grid .wide{{grid-column:auto}}}}
+@media(max-width:760px){{.gasket-option{{grid-template-columns:28px 88px 1fr;align-items:start}}.gasket-thumb{{width:78px;height:78px}}.gasket-option .price{{grid-column:3;text-align:left}}.gasket-copy{{justify-self:stretch;max-width:none}}.checkout-actions{{display:block}}.checkout-actions button{{width:100%;justify-content:center}}.shipping-grid{{grid-template-columns:1fr}}.shipping-grid .wide{{grid-column:auto}}}}
 </style>
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
 {loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div>{product_facts}</section>
