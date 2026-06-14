@@ -1052,6 +1052,7 @@ def admin_nav(active: str = "orders") -> str:
         ("products", "产品数据库", "/ADMIN?view=products"),
         ("gasket_catalog", "密封条目录", "/ADMIN?view=gasket_catalog"),
         ("product_gaskets", "门位密封条", "/ADMIN?view=product_gaskets"),
+        ("structure_test", "新结构测试", "/gasket-structure-test"),
     ]
     links = [
         f"""<a class="button {'active' if key == active else ''}" href="{href}">{label}</a>"""
@@ -2119,6 +2120,88 @@ def get_home_database_stats(client: httpx.Client) -> dict:
     }
 
 
+def get_gasket_structure_test_rows(client: httpx.Client) -> list[dict]:
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/gasket_profile_applications",
+        params={
+            "select": "*,gasket_profiles(*),gasket_finished_gaskets(*)",
+            "order": "created_at.desc",
+            "limit": "20",
+        },
+        headers=supabase_headers(),
+    )
+    if response.status_code >= 400:
+        return []
+    return response.json()
+
+
+def render_gasket_structure_test(rows: list[dict]) -> bytes:
+    cards = []
+    for row in rows:
+        profile = row.get("gasket_profiles") or {}
+        finished = row.get("gasket_finished_gaskets") or {}
+        cards.append(
+            f"""
+<article class="structure-card">
+  <div class="structure-step">
+    <span>1</span>
+    <h3>横截面 / Profile</h3>
+    <dl>
+      <dt>Profile code</dt><dd>{esc(profile.get('profile_code'))}</dd>
+      <dt>Profile name</dt><dd>{esc(profile.get('profile_name'))}</dd>
+      <dt>安装方式</dt><dd>{esc(profile.get('mounting_method'))}</dd>
+      <dt>磁性</dt><dd>{'Yes' if profile.get('magnetic') else 'No'}</dd>
+      <dt>横截面尺寸</dt><dd>{esc(profile.get('cross_section_width_in') or '待补')} x {esc(profile.get('cross_section_height_in') or '待补')}</dd>
+    </dl>
+  </div>
+  <div class="structure-step">
+    <span>2</span>
+    <h3>成品密封条尺寸</h3>
+    <dl>
+      <dt>成品编码</dt><dd>{esc(finished.get('finished_gasket_code'))}</dd>
+      <dt>矩形尺寸</dt><dd>{esc(finished.get('dimensions_text'))}</dd>
+      <dt>周长</dt><dd>{esc(finished.get('perimeter_in'))}"</dd>
+      <dt>价格样本</dt><dd>{money(finished.get('price_usd'))}</dd>
+      <dt>来源标题</dt><dd>{esc(finished.get('source_title'))}</dd>
+    </dl>
+  </div>
+  <div class="structure-step">
+    <span>3</span>
+    <h3>应用关联</h3>
+    <dl>
+      <dt>品牌</dt><dd>{esc(row.get('application_brand'))}</dd>
+      <dt>型号/目录项</dt><dd>{esc(row.get('application_model'))}</dd>
+      <dt>门位</dt><dd>{esc(row.get('application_door_position'))}</dd>
+      <dt>匹配分</dt><dd>{esc(row.get('match_confidence'))}%</dd>
+      <dt>证据</dt><dd>{esc(row.get('evidence_summary'))}</dd>
+    </dl>
+  </div>
+</article>"""
+        )
+    cards_html = "".join(cards) if cards else "<section><h2>暂无测试记录</h2><p class='muted'>结构表已建立，但测试数据暂时没有读取到。</p></section>"
+    return page("密封条结构测试", f"""
+<style>
+.structure-card{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:0 0 18px}}
+.structure-step{{background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:16px;min-height:260px}}
+.structure-step span{{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#0a6f78;color:#fff;font-weight:800}}
+.structure-step h3{{margin:12px 0;color:#0d1f2a}}
+.structure-step dl{{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 10px;margin:0}}
+.structure-step dt{{color:#687385;font-size:13px}}
+.structure-step dd{{margin:0;font-weight:700;overflow-wrap:anywhere}}
+@media(max-width:980px){{.structure-card{{grid-template-columns:1fr}}}}
+</style>
+<section>
+<h2>密封条新结构测试</h2>
+<p class="muted">这个页面展示新的三层关系：先保存横截面，再保存用这个横截面做出来的成品门封条尺寸，最后关联到某个冰箱/门位。</p>
+<p><a class="button" href="/ADMIN?view=gasket_catalog">后台密封条目录</a> <a class="button" href="/ADMIN?view=product_gaskets">后台门位密封条</a></p>
+</section>
+{cards_html}
+<section>
+<h2>这条测试数据的来源</h2>
+<p class="muted">CoolerGaskets 的 Gaskets by Profile 页面说明可按 profile 找密封条，并列出 75+ common profiles；Profile 010 页面列出了 Anthony aftermarket gasket 22 3/4 x 62 3/4 Door size 及价格。该测试记录用于验证结构，不代表已经确认某个具体冰箱型号 100% 适配。</p>
+</section>""")
+
+
 def shipping_address_text(order: dict) -> str:
     address = order.get("shipping_address") or {}
     if not isinstance(address, dict):
@@ -3076,6 +3159,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
+            return
+        if parsed.path == "/gasket-structure-test":
+            with httpx.Client(timeout=20) as client:
+                self.send_html(render_gasket_structure_test(get_gasket_structure_test_rows(client)))
             return
         if parsed.path.lower() == "/admin":
             if not is_admin_authenticated(self.headers.get("Cookie")):
