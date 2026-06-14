@@ -3180,6 +3180,11 @@ def get_admin_product_gaskets_page(client: httpx.Client, raw_query: str = "", pa
                 f"application_door_position.ilike.*{safe_search}*,"
                 f"application_label.ilike.*{safe_search}*,"
                 f"evidence_summary.ilike.*{safe_search}*,"
+                f"source_site_brand.ilike.*{safe_search}*,"
+                f"source_site_equipment_model.ilike.*{safe_search}*,"
+                f"source_site_gasket_part_number.ilike.*{safe_search}*,"
+                f"source_site_gasket_name.ilike.*{safe_search}*,"
+                f"source_site_door_position.ilike.*{safe_search}*,"
                 f"source_name.ilike.*{safe_search}*)"
             )
     response = client.get(
@@ -3231,7 +3236,7 @@ def get_catalog_applications(client: httpx.Client, catalog_id: int, limit: int =
     response = client.get(
         f"{SUPABASE_URL}/rest/v1/gasket_profile_applications",
         params={
-            "select": "id,application_brand,application_model,application_door_position,application_label,evidence_summary,match_confidence,data_status,gasket_finished_gaskets(id,part_number,finished_gasket_code,dimensions_text,width_in,height_in,perimeter_in,top_side_in,bottom_side_in,left_side_in,right_side_in,dimensioned_gasket_image_url,price_usd),refrigerator_products(id,brand,equipment_model)",
+            "select": "id,application_brand,application_model,application_door_position,application_label,source_site_brand,source_site_equipment_model,source_site_gasket_part_number,source_site_gasket_name,source_site_door_position,source_name,source_url,source_collected_at,evidence_summary,match_confidence,data_status,gasket_finished_gaskets(id,part_number,finished_gasket_code,dimensions_text,width_in,height_in,perimeter_in,top_side_in,bottom_side_in,left_side_in,right_side_in,dimensioned_gasket_image_url,price_usd),refrigerator_products(id,brand,equipment_model)",
             "gasket_profile_id": f"eq.{catalog_id}",
             "order": "match_confidence.desc.nullslast,id.desc",
             "limit": str(limit),
@@ -3328,24 +3333,26 @@ def render_admin_product_gaskets(gaskets_page: dict) -> bytes:
         product = item.get("refrigerator_products") or {}
         profile = item.get("gasket_profiles") or {}
         finished = item.get("gasket_finished_gaskets") or {}
-        dimensions = finished_gasket_dimension_summary(finished)
-        side_dimensions = finished_gasket_side_summary(finished)
         product_label = f"{product.get('brand') or item.get('application_brand') or ''} {product.get('equipment_model') or item.get('application_model') or ''}".strip()
+        source_model = f"{item.get('source_site_brand') or item.get('application_brand') or ''} {item.get('source_site_equipment_model') or item.get('application_model') or ''}".strip()
+        source_part = item.get("source_site_gasket_part_number") or finished.get("part_number") or finished.get("finished_gasket_code") or ""
+        source_gasket_name = item.get("source_site_gasket_name") or ""
+        source_door = item.get("source_site_door_position") or item.get("application_label") or item.get("application_door_position") or ""
+        source_link = f'<a href="{esc(item.get("source_url"))}" target="_blank" rel="noopener">{esc(item.get("source_name") or "来源链接")}</a>' if item.get("source_url") else esc(item.get("source_name"))
         rows.append(
             f"""<tr>
 <td><a href="/ADMIN?product_gasket_id={esc(item.get('id'))}">#{esc(item.get('id'))}</a></td>
-<td>{f'<a href="/ADMIN?product_id={esc(product.get("id"))}"><strong>{esc(product_label)}</strong></a>' if product.get('id') else f'<strong>{esc(product_label)}</strong>'}</td>
-<td>{esc(item.get('application_label') or item.get('application_door_position'))}</td>
-<td>{esc(finished.get('part_number') or finished.get('finished_gasket_code'))}<br><span class="muted">{esc(dimensions)}</span></td>
-<td>{esc(side_dimensions)}<br><span class="muted">周长 {esc(finished.get('perimeter_in'))}\"</span></td>
-<td>{finished_gasket_image_links(finished)}<br><span class="muted">{esc(finished.get('dimension_source'))} / {esc(finished.get('dimension_confidence_score'))}%</span></td>
-<td><a href="/ADMIN?gasket_catalog_id={esc(profile.get('id'))}">{esc(profile.get('profile_code'))}</a><br><span class="muted">{esc(profile_type_zh(profile.get('profile_type')))}</span></td>
-<td>{esc(profile.get('profile_style') or profile.get('profile_name'))}<br><span class="muted">{esc(profile.get('mounting_method'))}</span></td>
-<td>{money(finished.get('price_usd'))}<br><span class="muted">{esc(item.get('match_confidence'))}% / {esc(zh_status(item.get('data_status')))}</span></td>
-<td>{esc(item.get('source_name'))}<br><span class="muted">{esc(short_datetime(item.get('updated_at')))}</span></td>
+<td><a href="/ADMIN?gasket_catalog_id={esc(profile.get('id'))}"><strong>{esc(profile.get('profile_code'))}</strong></a><br><span class="muted">{esc(profile.get('profile_style') or profile.get('profile_name'))}</span></td>
+<td>{esc(finished.get('finished_gasket_code') or finished.get('part_number'))}<br><span class="muted">尺寸在密封条表</span></td>
+<td>{f'<a href="/ADMIN?product_id={esc(product.get("id"))}"><strong>{esc(product_label)}</strong></a>' if product.get('id') else f'<strong>{esc(product_label)}</strong>'}<br><span class="muted">{esc(item.get('application_label') or item.get('application_door_position'))}</span></td>
+<td>{esc(source_part)}<br><span class="muted">{esc(source_gasket_name)}</span></td>
+<td>{esc(source_model)}<br><span class="muted">{esc(source_door)}</span></td>
+<td>{source_link}<br><span class="muted">{esc(item.get('source_page_title') or '')}</span></td>
+<td>{esc(item.get('match_confidence'))}%<br><span class="muted">{esc(zh_status(item.get('data_status')))}</span></td>
+<td>{esc(short_datetime(item.get('source_collected_at') or item.get('updated_at')))}</td>
 </tr>"""
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='10'>没有找到关联数据库记录。</td></tr>"
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>没有找到关联数据库记录。</td></tr>"
     query_text = gaskets_page.get("query") or ""
     page_num = int(gaskets_page.get("page") or 1)
     per_page = int(gaskets_page.get("per_page") or 50)
@@ -3375,24 +3382,24 @@ def render_admin_product_gaskets(gaskets_page: dict) -> bytes:
 .admin-page-gap{{color:#687385;padding:0 2px}}
 </style>
 <section><h2>后台关联数据库</h2>
-<p class="muted">这里记录“某个横截面做成某个成品密封条，并适配某个冰箱型号/门位”。这是产品数据库和密封条数据库之间的桥。</p>
+<p class="muted">这里记录“我们自己的密封条”适配了哪些冰箱型号。每条关联必须保存采集来源、采集地密封条编号、采集地冰箱型号，用来确认款式和适配证据。尺寸保存在密封条表，不放在关联表。</p>
 {admin_nav('product_gaskets')}
 <div class="admin-filter-body">
 <form method="get" action="/ADMIN">
 <input type="hidden" name="view" value="product_gaskets">
 <input type="hidden" name="page" value="1">
 <label for="admin-product-gasket-search">搜索关联数据库</label>
-<div class="admin-search-line"><input id="admin-product-gasket-search" name="q" type="search" value="{esc(query_text)}" placeholder="输入品牌、型号、门位、来源或证据关键词"><button class="admin-search-button" type="submit">搜索</button></div>
+<div class="admin-search-line"><input id="admin-product-gasket-search" name="q" type="search" value="{esc(query_text)}" placeholder="输入我们SKU、品牌、型号、对方配件号、对方型号或来源网站"><button class="admin-search-button" type="submit">搜索</button></div>
 <div class="admin-page-size"><span class="admin-filter-help">每页显示</span><select name="per_page" onchange="this.form.submit()">
 <option value="25" {"selected" if per_page == 25 else ""}>25 条</option>
 <option value="50" {"selected" if per_page == 50 else ""}>50 条</option>
 <option value="100" {"selected" if per_page == 100 else ""}>100 条</option>
 </select></div>
 </form>
-<div class="admin-filter-help">同一种横截面可以做成很多不同长宽的成品密封条，也可以适配多个品牌型号。</div>
+<div class="admin-filter-help">同一个密封条可以关联多个冰箱型号；同一个冰箱型号也可能关联多个门位。关联表只证明“适配关系”和“证据来源”。</div>
 </div>
 {pagination_html}
-<table class="admin-table"><thead><tr><th>ID</th><th>冰箱型号</th><th>门位</th><th>成品密封条</th><th>四边尺寸</th><th>图片/尺寸来源</th><th>横截面</th><th>样式/安装</th><th>价格/匹配</th><th>来源/时间</th></tr></thead><tbody>{rows_html}</tbody></table>
+<table class="admin-table"><thead><tr><th>ID</th><th>我们密封条</th><th>我们成品/SKU</th><th>关联冰箱型号</th><th>采集地密封条编号</th><th>采集地冰箱型号</th><th>采集来源</th><th>匹配分</th><th>采集时间</th></tr></thead><tbody>{rows_html}</tbody></table>
 {pagination_html}
 </section>""")
 
@@ -3426,10 +3433,12 @@ def render_admin_gasket_catalog_detail(item: dict, applications: list[dict]) -> 
         product = row.get("refrigerator_products") or {}
         finished = row.get("gasket_finished_gaskets") or {}
         product_label = f"{product.get('brand') or row.get('application_brand') or ''} {product.get('equipment_model') or row.get('application_model') or ''}".strip()
+        source_model = f"{row.get('source_site_brand') or row.get('application_brand') or ''} {row.get('source_site_equipment_model') or row.get('application_model') or ''}".strip()
+        source_link = f'<a href="{esc(row.get("source_url"))}" target="_blank" rel="noopener">{esc(row.get("source_name") or "来源链接")}</a>' if row.get("source_url") else esc(row.get("source_name"))
         app_rows.append(
-            f"""<tr><td><a href="/ADMIN?product_gasket_id={esc(row.get('id'))}">#{esc(row.get('id'))}</a></td><td>{f'<a href="/ADMIN?product_id={esc(product.get("id"))}">{esc(product_label)}</a>' if product.get('id') else esc(product_label)}</td><td>{esc(row.get('application_label') or row.get('application_door_position'))}</td><td>{esc(finished.get('part_number') or finished.get('finished_gasket_code'))}</td><td>{esc(finished_gasket_dimension_summary(finished))}</td><td>{esc(finished_gasket_side_summary(finished))}</td><td>{finished_gasket_image_links(finished)}</td><td>{esc(row.get('match_confidence'))}%</td></tr>"""
+            f"""<tr><td><a href="/ADMIN?product_gasket_id={esc(row.get('id'))}">#{esc(row.get('id'))}</a></td><td>{f'<a href="/ADMIN?product_id={esc(product.get("id"))}">{esc(product_label)}</a>' if product.get('id') else esc(product_label)}</td><td>{esc(row.get('application_label') or row.get('application_door_position'))}</td><td>{esc(row.get('source_site_gasket_part_number') or finished.get('part_number') or finished.get('finished_gasket_code'))}</td><td>{esc(source_model)}</td><td>{source_link}</td><td>{esc(row.get('match_confidence'))}%</td></tr>"""
         )
-    app_rows_html = "".join(app_rows) if app_rows else "<tr><td colspan='8'>暂无冰箱门位适配关联。</td></tr>"
+    app_rows_html = "".join(app_rows) if app_rows else "<tr><td colspan='7'>暂无冰箱门位适配关联。</td></tr>"
     return page("密封条数据库详情", f"""
 <style>
 pre{{white-space:pre-wrap;max-height:260px;overflow:auto;background:#f8fafc;border:1px solid #dbe2ea;border-radius:6px;padding:8px}}
@@ -3438,7 +3447,7 @@ pre{{white-space:pre-wrap;max-height:260px;overflow:auto;background:#f8fafc;bord
 .admin-table th{{background:#f8fafc;color:#687385}}
 </style>
 <section>{admin_nav('gasket_catalog')}<h2>密封条横截面 #{esc(item.get('id'))}</h2><div class="facts">{field_rows}</div></section>
-<section><h2>这个横截面做过哪些冰箱密封条</h2><table class="admin-table"><thead><tr><th>关联ID</th><th>冰箱型号</th><th>门位</th><th>成品/配件号</th><th>宽高尺寸</th><th>四边尺寸</th><th>图片</th><th>匹配分</th></tr></thead><tbody>{app_rows_html}</tbody></table></section>
+<section><h2>这个密封条关联了哪些冰箱型号</h2><table class="admin-table"><thead><tr><th>关联ID</th><th>我们库内冰箱型号</th><th>门位</th><th>采集地密封条编号</th><th>采集地冰箱型号</th><th>采集来源</th><th>匹配分</th></tr></thead><tbody>{app_rows_html}</tbody></table></section>
 <section><h2>完整原始记录</h2><pre>{esc(compact_json(item))}</pre></section>""")
 
 
@@ -3451,6 +3460,13 @@ def render_admin_product_gasket_detail(item: dict) -> bytes:
         ("冰箱型号", product_label),
         ("产品ID", item.get("refrigerator_product_id")),
         ("门位", item.get("application_label") or item.get("application_door_position")),
+        ("采集地品牌", item.get("source_site_brand")),
+        ("采集地冰箱型号", item.get("source_site_equipment_model")),
+        ("采集地门位叫法", item.get("source_site_door_position")),
+        ("采集地密封条编号", item.get("source_site_gasket_part_number")),
+        ("采集地密封条名称", item.get("source_site_gasket_name")),
+        ("采集页面标题", item.get("source_page_title")),
+        ("采集时间", short_datetime(item.get("source_collected_at"))),
         ("成品密封条", finished.get("part_number") or finished.get("finished_gasket_code")),
         ("成品尺寸", finished_gasket_dimension_summary(finished)),
         ("上边尺寸", finished.get("top_side_in")),
@@ -3479,6 +3495,7 @@ def render_admin_product_gasket_detail(item: dict) -> bytes:
         ("匹配分", item.get("match_confidence")),
         ("状态", zh_status(item.get("data_status"))),
         ("证据摘要", item.get("evidence_summary")),
+        ("适配备注", item.get("fitment_notes")),
         ("来源", item.get("source_name")),
         ("来源链接", item.get("source_url")),
     ]
