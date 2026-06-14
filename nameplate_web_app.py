@@ -333,6 +333,10 @@ def normalize_model(value: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (value or "").upper())
 
 
+def normalize_alias(value: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (value or "").upper())
+
+
 def model_variants(value: str) -> list[str]:
     raw = (value or "").strip().upper()
     compact = normalize_model(raw)
@@ -882,10 +886,41 @@ def get_recent_evidence_packages(client: httpx.Client, limit: int = 30) -> list[
     return response.json()
 
 
-def admin_product_query_parts(raw_query: str) -> tuple[str, dict[str, str], list[str]]:
+def find_brand_alias(client: httpx.Client, raw_value: str) -> str | None:
+    normalized = normalize_alias(raw_value)
+    if not normalized:
+        return None
+    try:
+        response = client.get(
+            f"{SUPABASE_URL}/rest/v1/brand_aliases",
+            params={
+                "select": "canonical_brand,confidence_score",
+                "alias_normalized": f"eq.{normalized}",
+                "is_active": "eq.true",
+                "order": "confidence_score.desc",
+                "limit": "1",
+            },
+            headers=supabase_headers(),
+        )
+        if response.status_code >= 400:
+            return None
+        rows = response.json()
+        if rows:
+            return rows[0].get("canonical_brand")
+    except Exception:
+        return None
+    return None
+
+
+def admin_product_query_parts(raw_query: str, client: httpx.Client | None = None) -> tuple[str, dict[str, str], list[str]]:
     filters: dict[str, str] = {}
     search_terms: list[str] = []
     applied: list[str] = []
+    alias_brand = find_brand_alias(client, raw_query) if client else None
+    if alias_brand and alias_brand.lower() != (raw_query or "").strip().lower():
+        filters["brand"] = f"eq.{alias_brand}"
+        applied.append(f"品牌别名：{raw_query} → {alias_brand}")
+        return "", filters, applied
     for token in re.split(r"\s+", (raw_query or "").strip()):
         if not token:
             continue
@@ -975,7 +1010,7 @@ def get_admin_products_page(client: httpx.Client, raw_query: str = "", page_num:
     per_page = max(10, min(100, per_page or 50))
     page_num = max(1, page_num or 1)
     offset = (page_num - 1) * per_page
-    search_text, filters, applied = admin_product_query_parts(raw_query)
+    search_text, filters, applied = admin_product_query_parts(raw_query, client)
     params = {
         "select": "id,brand,equipment_model,product_type,product_image_url,updated_at,last_enriched_at,last_discovered_at,data_status,data_confidence,door_count,door_layout,door_positions,manufacturer,lifecycle_status,market_category,commercial_sector,equipment_category,equipment_form,temperature_application,classification_confidence,classification_source,classified_at",
         "order": "brand.asc.nullslast,equipment_model.asc.nullslast,id.asc",
