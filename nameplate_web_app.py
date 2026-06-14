@@ -1753,11 +1753,10 @@ def get_database_stats(client: httpx.Client) -> dict:
 def get_home_database_stats(client: httpx.Client) -> dict:
     product_total = supabase_count(client, "refrigerator_products")
     quote_items = supabase_count(client, "refrigerator_product_quote_items", select_field="refrigerator_product_id")
-    gasket_parts = supabase_count(client, "gasket_catalog")
     return {
         "product_total": product_total,
         "quote_items": quote_items,
-        "known_profiles": gasket_parts,
+        "known_profiles": count_known_profiles(client),
     }
 
 
