@@ -2400,8 +2400,38 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
   const textFilterOk = (row, query) => {{
     if (!query) return true;
     const search = row.dataset.search || '';
+    const aliases = {{
+      '商用': 'commercial',
+      '商用冰箱': 'commercial',
+      '商用制冷': 'commercial',
+      '家用': 'residential',
+      '民用': 'residential',
+      '家用冰箱': 'residential',
+      '未分类': 'unknown',
+      '未知': 'unknown',
+      '饭店': 'restaurant',
+      '餐厅': 'restaurant',
+      '商超': 'supermarket',
+      '超市': 'supermarket',
+      '医疗': 'medical',
+      '酒吧': 'bar',
+      '冷藏': 'refrigerator',
+      '冷藏柜': 'refrigerator',
+      '冷冻': 'freezer',
+      '冷冻柜': 'freezer',
+      '两用': 'dual_temp',
+      '冷藏冷冻': 'dual_temp',
+      '展示': 'display_case',
+      '展示柜': 'display_case',
+      '备餐台': 'prep_table',
+      '吧台柜': 'bar_cooler',
+      '步入式': 'walk_in',
+      '制冰': 'ice_machine',
+      '制冰机': 'ice_machine'
+    }};
     const tokens = query.split(/\\s+/).filter(Boolean);
     return tokens.every(token => {{
+      token = aliases[token] || token;
       if (['缺图片','无图片','没有图片'].includes(token)) return row.dataset.image === 'missing-image';
       if (['有图片','已有图片'].includes(token)) return row.dataset.image === 'has-image';
       if (['缺资料','缺少资料'].includes(token)) return row.dataset.missing === 'missing';
