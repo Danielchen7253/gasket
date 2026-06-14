@@ -1050,8 +1050,8 @@ def admin_nav(active: str = "orders") -> str:
     items = [
         ("orders", "订单列表", "/ADMIN"),
         ("products", "产品数据库", "/ADMIN?view=products"),
-        ("gasket_catalog", "密封条目录", "/ADMIN?view=gasket_catalog"),
-        ("product_gaskets", "门位密封条", "/ADMIN?view=product_gaskets"),
+        ("gasket_catalog", "密封条数据库", "/ADMIN?view=gasket_catalog"),
+        ("product_gaskets", "关联数据库", "/ADMIN?view=product_gaskets"),
         ("structure_test", "新结构测试", "/gasket-structure-test"),
     ]
     links = [
@@ -1150,7 +1150,7 @@ def get_admin_gasket_catalog_page(client: httpx.Client, raw_query: str = "", pag
         "per_page": per_page,
         "total_pages": total_pages,
         "query": query_text,
-        "applied": [f"关键词：{query_text}"] if query_text else ["全部密封条目录"],
+        "applied": [f"关键词：{query_text}"] if query_text else ["全部密封条数据库"],
     }
 
 
@@ -1191,7 +1191,7 @@ def get_admin_product_gaskets_page(client: httpx.Client, raw_query: str = "", pa
         "per_page": per_page,
         "total_pages": total_pages,
         "query": query_text,
-        "applied": [f"关键词：{query_text}"] if query_text else ["全部门位密封条"],
+        "applied": [f"关键词：{query_text}"] if query_text else ["全部关联数据库"],
     }
 
 
@@ -2193,7 +2193,7 @@ def render_gasket_structure_test(rows: list[dict]) -> bytes:
 <section>
 <h2>密封条新结构测试</h2>
 <p class="muted">这个页面展示新的三层关系：先保存横截面，再保存用这个横截面做出来的成品门封条尺寸，最后关联到某个冰箱/门位。</p>
-<p><a class="button" href="/ADMIN?view=gasket_catalog">后台密封条目录</a> <a class="button" href="/ADMIN?view=product_gaskets">后台门位密封条</a></p>
+<p><a class="button" href="/ADMIN?view=gasket_catalog">后台密封条数据库</a> <a class="button" href="/ADMIN?view=product_gaskets">后台关联数据库</a></p>
 </section>
 {cards_html}
 <section>
@@ -2437,7 +2437,7 @@ pre{{white-space:pre-wrap;max-height:240px;overflow:auto;background:#f8fafc;bord
 .admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
 .admin-actions .logout{{margin-left:auto}}
 </style>
-<section><div class="admin-actions"><a class="button" href="/ADMIN">返回订单列表</a><a class="button" href="/ADMIN?view=products">产品数据库</a><a class="button" href="/ADMIN?view=gasket_catalog">密封条目录</a><a class="button" href="/ADMIN?view=product_gaskets">门位密封条</a>{f' <a class="button" href="/ADMIN?product_id={esc(product_id)}">产品数据库记录</a> <a class="button" href="/preview?product_id={esc(product_id)}">客户预览页</a>' if product_id else ''}<a class="button" href="{esc(order.get('checkout_url'))}" target="_blank" rel="noopener">Shopify付款链接</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
+<section><div class="admin-actions"><a class="button" href="/ADMIN">返回订单列表</a><a class="button" href="/ADMIN?view=products">产品数据库</a><a class="button" href="/ADMIN?view=gasket_catalog">密封条数据库</a><a class="button" href="/ADMIN?view=product_gaskets">关联数据库</a>{f' <a class="button" href="/ADMIN?product_id={esc(product_id)}">产品数据库记录</a> <a class="button" href="/preview?product_id={esc(product_id)}">客户预览页</a>' if product_id else ''}<a class="button" href="{esc(order.get('checkout_url'))}" target="_blank" rel="noopener">Shopify付款链接</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
 <h2>订单 #{esc(order.get('id'))}</h2>
 <div class="summary"><div class="metric"><span>付款状态</span><strong>{esc(zh_status(order.get('payment_status')))}</strong></div><div class="metric"><span>生产状态</span><strong>{esc(zh_status(order.get('fulfillment_status')))}</strong></div><div class="metric"><span>金额</span><strong>{money(order.get('subtotal_usd'))}</strong></div></div>
 </section>
@@ -2837,15 +2837,15 @@ def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
 <td>{esc(item.get('source_name'))}<br><span class="muted">{esc(short_datetime(item.get('updated_at')))}</span></td>
 </tr>"""
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='8'>没有找到密封条目录记录。</td></tr>"
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='8'>没有找到密封条数据库记录。</td></tr>"
     query_text = catalog_page.get("query") or ""
     page_num = int(catalog_page.get("page") or 1)
     per_page = int(catalog_page.get("per_page") or 50)
     total = int(catalog_page.get("total") or 0)
     total_pages = int(catalog_page.get("total_pages") or 1)
-    applied_text = "；".join(catalog_page.get("applied") or []) or "全部密封条目录"
+    applied_text = "；".join(catalog_page.get("applied") or []) or "全部密封条数据库"
     pagination_html = admin_pagination_html("gasket_catalog", query_text, page_num, per_page, total, total_pages, applied_text)
-    return page("后台密封条目录", f"""
+    return page("后台密封条数据库", f"""
 <style>
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
@@ -2869,14 +2869,14 @@ def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
 .admin-page-link.disabled{{opacity:.45}}
 .admin-page-gap{{color:#687385;padding:0 2px}}
 </style>
-<section><h2>后台密封条目录</h2>
+<section><h2>后台密封条数据库</h2>
 <p class="muted">管理标准密封条本体：配件号、替代号、横截面、安装方式、尺寸和可适配范围。</p>
 {admin_nav('gasket_catalog')}
 <div class="admin-filter-body">
 <form method="get" action="/ADMIN">
 <input type="hidden" name="view" value="gasket_catalog">
 <input type="hidden" name="page" value="1">
-<label for="admin-gasket-catalog-search">搜索密封条目录</label>
+<label for="admin-gasket-catalog-search">搜索密封条数据库</label>
 <div class="admin-search-line"><input id="admin-gasket-catalog-search" name="q" type="search" value="{esc(query_text)}" placeholder="输入配件号、横截面、颜色、安装方式或尺寸"><button class="admin-search-button" type="submit">搜索</button></div>
 <div class="admin-page-size"><span class="admin-filter-help">每页显示</span><select name="per_page" onchange="this.form.submit()">
 <option value="25" {"selected" if per_page == 25 else ""}>25 条</option>
@@ -2913,15 +2913,15 @@ def render_admin_product_gaskets(gaskets_page: dict) -> bytes:
 <td>{money(item.get('final_price_usd'))}<br><span class="muted">{esc(short_datetime(item.get('updated_at')))}</span></td>
 </tr>"""
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>没有找到门位密封条记录。</td></tr>"
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>没有找到关联数据库记录。</td></tr>"
     query_text = gaskets_page.get("query") or ""
     page_num = int(gaskets_page.get("page") or 1)
     per_page = int(gaskets_page.get("per_page") or 50)
     total = int(gaskets_page.get("total") or 0)
     total_pages = int(gaskets_page.get("total_pages") or 1)
-    applied_text = "；".join(gaskets_page.get("applied") or []) or "全部门位密封条"
+    applied_text = "；".join(gaskets_page.get("applied") or []) or "全部关联数据库"
     pagination_html = admin_pagination_html("product_gaskets", query_text, page_num, per_page, total, total_pages, applied_text)
-    return page("后台门位密封条", f"""
+    return page("后台关联数据库", f"""
 <style>
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
@@ -2945,14 +2945,14 @@ def render_admin_product_gaskets(gaskets_page: dict) -> bytes:
 .admin-page-link.disabled{{opacity:.45}}
 .admin-page-gap{{color:#687385;padding:0 2px}}
 </style>
-<section><h2>后台门位密封条</h2>
-<p class="muted">管理“某个冰箱型号的某个门位”使用哪一条密封条。这里是产品型号和标准密封条目录之间的关联表。</p>
+<section><h2>后台关联数据库</h2>
+<p class="muted">管理冰箱型号、门位、成品密封条和密封条横截面之间的关系。这里是产品数据库和密封条数据库之间的关联表。</p>
 {admin_nav('product_gaskets')}
 <div class="admin-filter-body">
 <form method="get" action="/ADMIN">
 <input type="hidden" name="view" value="product_gaskets">
 <input type="hidden" name="page" value="1">
-<label for="admin-product-gasket-search">搜索门位密封条</label>
+<label for="admin-product-gasket-search">搜索关联数据库</label>
 <div class="admin-search-line"><input id="admin-product-gasket-search" name="q" type="search" value="{esc(query_text)}" placeholder="输入门位、配件号、尺寸、颜色或横截面"><button class="admin-search-button" type="submit">搜索</button></div>
 <div class="admin-page-size"><span class="admin-filter-help">每页显示</span><select name="per_page" onchange="this.form.submit()">
 <option value="25" {"selected" if per_page == 25 else ""}>25 条</option>
@@ -2995,7 +2995,7 @@ def render_admin_gasket_catalog_detail(item: dict, applications: list[dict]) -> 
             f"""<tr><td><a href="/ADMIN?product_gasket_id={esc(row.get('id'))}">#{esc(row.get('id'))}</a></td><td><a href="/ADMIN?product_id={esc(product.get('id'))}">{esc(product.get('brand'))} {esc(product.get('equipment_model'))}</a></td><td>{esc(row.get('door_position_display') or row.get('door_position'))}</td><td>{esc(row.get('part_number'))}</td><td>{esc(row.get('dimensions_text'))}</td><td>{esc(row.get('confidence_score'))}%</td></tr>"""
         )
     app_rows_html = "".join(app_rows) if app_rows else "<tr><td colspan='6'>暂无产品门位关联。</td></tr>"
-    return page("密封条目录详情", f"""
+    return page("密封条数据库详情", f"""
 <style>
 pre{{white-space:pre-wrap;max-height:260px;overflow:auto;background:#f8fafc;border:1px solid #dbe2ea;border-radius:6px;padding:8px}}
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
@@ -3004,7 +3004,7 @@ pre{{white-space:pre-wrap;max-height:260px;overflow:auto;background:#f8fafc;bord
 .admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
 .admin-actions .logout{{margin-left:auto}}
 </style>
-<section>{admin_nav('gasket_catalog')}<h2>密封条目录 #{esc(item.get('id'))}</h2><div class="facts">{field_rows}</div></section>
+<section>{admin_nav('gasket_catalog')}<h2>密封条数据库 #{esc(item.get('id'))}</h2><div class="facts">{field_rows}</div></section>
 <section><h2>适配产品门位</h2><table class="admin-table"><thead><tr><th>关联ID</th><th>产品型号</th><th>门位</th><th>配件号</th><th>尺寸</th><th>置信度</th></tr></thead><tbody>{app_rows_html}</tbody></table></section>
 <section><h2>完整原始记录</h2><pre>{esc(compact_json(item))}</pre></section>""")
 
@@ -3034,14 +3034,14 @@ def render_admin_product_gasket_detail(item: dict) -> bytes:
         ("来源链接", item.get("source_url")),
     ]
     field_rows = "".join([f"<div>{esc(label)}</div><div><strong>{esc(value)}</strong></div>" for label, value in fields])
-    return page("门位密封条详情", f"""
+    return page("关联数据库详情", f"""
 <style>
 pre{{white-space:pre-wrap;max-height:260px;overflow:auto;background:#f8fafc;border:1px solid #dbe2ea;border-radius:6px;padding:8px}}
 .admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
 .admin-actions .logout{{margin-left:auto}}
 </style>
-<section>{admin_nav('product_gaskets')}<h2>门位密封条 #{esc(item.get('id'))}</h2><div class="facts">{field_rows}</div>
-<p><a class="button" href="/ADMIN?product_id={esc(item.get('refrigerator_product_id'))}">查看产品</a> {f'<a class="button" href="/ADMIN?gasket_catalog_id={esc(item.get("gasket_catalog_id"))}">查看标准密封条目录</a>' if item.get('gasket_catalog_id') else ''}</p></section>
+<section>{admin_nav('product_gaskets')}<h2>关联数据库 #{esc(item.get('id'))}</h2><div class="facts">{field_rows}</div>
+<p><a class="button" href="/ADMIN?product_id={esc(item.get('refrigerator_product_id'))}">查看产品</a> {f'<a class="button" href="/ADMIN?gasket_catalog_id={esc(item.get("gasket_catalog_id"))}">查看密封条数据库</a>' if item.get('gasket_catalog_id') else ''}</p></section>
 <section><h2>关联产品快照</h2><pre>{esc(compact_json(product))}</pre></section>
 <section><h2>关联目录快照</h2><pre>{esc(compact_json(catalog))}</pre></section>
 <section><h2>完整原始记录</h2><pre>{esc(compact_json(item))}</pre></section>""")
@@ -3211,14 +3211,14 @@ class Handler(BaseHTTPRequestHandler):
                 if gasket_catalog_id:
                     catalog_record = get_gasket_catalog_record(client, gasket_catalog_id)
                     if not catalog_record:
-                        self.send_html(page("密封条目录不存在", "<section><h2>密封条目录不存在</h2><p><a class='button' href='/ADMIN?view=gasket_catalog'>返回密封条目录</a></p></section>"), HTTPStatus.NOT_FOUND)
+                        self.send_html(page("密封条数据库不存在", "<section><h2>密封条数据库不存在</h2><p><a class='button' href='/ADMIN?view=gasket_catalog'>返回密封条数据库</a></p></section>"), HTTPStatus.NOT_FOUND)
                         return
                     self.send_html(render_admin_gasket_catalog_detail(catalog_record, get_catalog_applications(client, gasket_catalog_id)))
                     return
                 if product_gasket_id:
                     gasket_record = get_product_gasket_record(client, product_gasket_id)
                     if not gasket_record:
-                        self.send_html(page("门位密封条不存在", "<section><h2>门位密封条不存在</h2><p><a class='button' href='/ADMIN?view=product_gaskets'>返回门位密封条</a></p></section>"), HTTPStatus.NOT_FOUND)
+                        self.send_html(page("关联数据库不存在", "<section><h2>关联数据库不存在</h2><p><a class='button' href='/ADMIN?view=product_gaskets'>返回关联数据库</a></p></section>"), HTTPStatus.NOT_FOUND)
                         return
                     self.send_html(render_admin_product_gasket_detail(gasket_record))
                     return
