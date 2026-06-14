@@ -2102,14 +2102,14 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
 <section><h2>后台产品数据库</h2>
 <p class="muted">内部查看产品资料证据、字段完整度、置信度和补全时间。</p>
 <div class="admin-actions"><a class="button" href="/ADMIN">订单列表</a><a class="button active" href="/ADMIN?view=products">产品数据库</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
-</section>
-{stats_html}
-<section>
 <div class="admin-filter-body" style="max-width:none;margin-bottom:12px">
 <label for="admin-product-search">搜索产品数据库</label>
 <div class="admin-search-line"><input id="admin-product-search" type="search" placeholder="例如：Whirlpool WRF535SMHZ03；缺图片 3门 True；或：完整度<80 置信度>70"><button class="admin-search-button" type="button" id="admin-product-search-button">搜索</button></div>
 <div class="admin-filter-help">支持：品牌/型号关键词、缺图片、有图片、缺资料、资料完整、1门/2门/3门/4门、完整度&lt;80、置信度&gt;70。</div>
 </div>
+</section>
+{stats_html}
+<section>
 <details class="admin-filter">
 <summary>筛选产品资料</summary>
 <div class="admin-filter-body">
