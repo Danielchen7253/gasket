@@ -1911,8 +1911,11 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
         ).lower()
         missing_state = "missing" if missing else "complete"
         image_filter_state = "has-image" if product.get("product_image_url") else "missing-image"
+        door_count_value = product.get("door_count") or ""
+        completeness_value = package.get("completeness_score") or 0
+        confidence_value = package.get("overall_confidence") or 0
         rows.append(
-            f"""<tr data-product-row data-search="{esc(search_blob)}" data-image="{image_filter_state}" data-missing="{missing_state}">
+            f"""<tr data-product-row data-search="{esc(search_blob)}" data-image="{image_filter_state}" data-missing="{missing_state}" data-door-count="{esc(door_count_value)}" data-completeness="{esc(completeness_value)}" data-confidence="{esc(confidence_value)}">
 <td><a href="/ADMIN?product_id={esc(product_id)}">{esc(product_id)}</a></td>
 <td><strong>{esc(package.get('brand') or product.get('brand'))}</strong><br>{esc(package.get('equipment_model') or product.get('equipment_model'))}</td>
 <td>{esc(product.get('product_type') or '')}<br><span class="muted">{esc(product.get('door_layout') or '')}</span></td>
@@ -1946,6 +1949,7 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
 .admin-filter-chip{{border:1px solid #ccd6e2;background:#f8fafc;color:#0d1f2a;border-radius:999px;padding:8px 12px;font-size:13px;cursor:pointer}}
 .admin-filter-chip.active{{border-color:#087b83;background:#e7f7f8;color:#05656b;font-weight:700}}
 .admin-filter-clear{{border-color:#d8a4a4;background:#fff7f7;color:#8a2828}}
+.admin-filter-help{{font-size:13px;color:#687385;line-height:1.55}}
 .admin-filter-count{{font-size:13px;color:#687385}}
 </style>
 <section><h2>后台产品数据库</h2>
@@ -1954,8 +1958,9 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
 <details class="admin-filter">
 <summary>筛选产品资料</summary>
 <div class="admin-filter-body">
-<label for="admin-product-search">搜索 ID、品牌、型号、产品类型、门位结构或缺少资料</label>
-<input id="admin-product-search" type="search" placeholder="输入关键词筛选产品资料">
+<label for="admin-product-search">输入你想要的筛选条件</label>
+<input id="admin-product-search" type="search" placeholder="例如：缺图片 3门 True；或：完整度<80 置信度>70">
+<div class="admin-filter-help">支持：品牌/型号关键词、缺图片、有图片、缺资料、资料完整、1门/2门/3门/4门、完整度&lt;80、置信度&gt;70。</div>
 <div class="admin-filter-row" aria-label="图片状态筛选">
 <span class="admin-filter-title">图片</span>
 <button class="admin-filter-chip active" type="button" data-product-filter-group="image" data-filter-value="all">全部</button>
@@ -1979,6 +1984,37 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
   const count = document.getElementById('admin-product-count');
   const rows = Array.from(document.querySelectorAll('[data-product-row]'));
   const filters = {{image:'all', missing:'all'}};
+  const matchNumber = (actual, operator, expected) => {{
+    const value = Number(actual || 0);
+    const target = Number(expected || 0);
+    if (operator === '<') return value < target;
+    if (operator === '<=') return value <= target;
+    if (operator === '>') return value > target;
+    if (operator === '>=') return value >= target;
+    return value === target;
+  }};
+  const textFilterOk = (row, query) => {{
+    if (!query) return true;
+    const search = row.dataset.search || '';
+    const tokens = query.split(/\\s+/).filter(Boolean);
+    return tokens.every(token => {{
+      if (['缺图片','无图片','没有图片'].includes(token)) return row.dataset.image === 'missing-image';
+      if (['有图片','已有图片'].includes(token)) return row.dataset.image === 'has-image';
+      if (['缺资料','缺少资料'].includes(token)) return row.dataset.missing === 'missing';
+      if (['资料完整','完整资料'].includes(token)) return row.dataset.missing === 'complete';
+      const doorMatch = token.match(/^(\\d+)\\s*门$/);
+      if (doorMatch) return String(row.dataset.doorCount || '') === doorMatch[1];
+      const completenessMatch = token.match(/^(?:完整度|complete|completeness)(<=|>=|<|>|=)(\\d+)$/i);
+      if (completenessMatch) return matchNumber(row.dataset.completeness, completenessMatch[1], completenessMatch[2]);
+      const confidenceMatch = token.match(/^(?:置信度|confidence)(<=|>=|<|>|=)(\\d+)$/i);
+      if (confidenceMatch) return matchNumber(row.dataset.confidence, confidenceMatch[1], confidenceMatch[2]);
+      const brandMatch = token.match(/^品牌[:：]?(.+)$/);
+      if (brandMatch) return search.includes(brandMatch[1].toLowerCase());
+      const modelMatch = token.match(/^型号[:：]?(.+)$/);
+      if (modelMatch) return search.includes(modelMatch[1].toLowerCase());
+      return search.includes(token);
+    }});
+  }};
   const setActive = (group, value) => {{
     document.querySelectorAll(`[data-product-filter-group="${{group}}"]`).forEach(button => {{
       button.classList.toggle('active', button.dataset.filterValue === value);
@@ -1988,7 +2024,7 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
     const q = (input.value || '').trim().toLowerCase();
     let visible = 0;
     rows.forEach(row => {{
-      const textOk = !q || (row.dataset.search || '').includes(q);
+      const textOk = textFilterOk(row, q);
       const imageOk = filters.image === 'all' || row.dataset.image === filters.image;
       const missingOk = filters.missing === 'all' || row.dataset.missing === filters.missing;
       const ok = textOk && imageOk && missingOk;
