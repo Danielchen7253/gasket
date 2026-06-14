@@ -274,7 +274,7 @@ main{max-width:none;padding:0}
         if pending_new and not quote_items:
             rows.append(f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>""")
 
-        profile_image = next((item.get("cross_section_image_url") for item in quote_items if item.get("cross_section_image_url")), "")
+        profile_image = next((item.get("profile_image_url") for item in quote_items if item.get("profile_image_url")), "")
         for index, item in enumerate(quote_items, start=1):
             door_label = item.get("door_position_display") or "Door position loading"
             door_key = item.get("door_position") or f"door_{index}"
