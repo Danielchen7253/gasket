@@ -351,6 +351,29 @@ window.initShippingAutocomplete=function(){{
         customer = {key: fields.get(key, {}).get("text") or None for key in ("customer_name", "customer_email", "customer_phone")}
 
         if path == "/read-nameplate":
+            demo_key = None
+            for value in (brand, model):
+                key = (value or "").strip()
+                if key == "1":
+                    demo_key = key
+                    break
+            if demo_key:
+                with httpx.Client(timeout=30) as client:
+                    product = g["get_product"](client, 39)
+                    if not product:
+                        self.send_html(g["render_home"]("Demo product record was not found."), HTTPStatus.NOT_FOUND)
+                        return
+                    demo_request = {
+                        "nameplate_data": {
+                            "brand": product.get("brand"),
+                            "model": product.get("equipment_model"),
+                            "serial_number": "DEMO-001",
+                            "raw_text": "Demo query 1: first test refrigerator model and first test gasket.",
+                            "confidence": 100,
+                        }
+                    }
+                    self.send_html(g["render_result"](product, g["get_quote_items"](client, product["id"]), demo_request, None))
+                    return
             if not (file_field and file_field.get("filename") and file_field.get("data")):
                 self.send_html(g["render_home"]("Please upload a nameplate photo first."), HTTPStatus.BAD_REQUEST)
                 return
