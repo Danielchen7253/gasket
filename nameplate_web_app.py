@@ -13,7 +13,7 @@ import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 from dotenv import load_dotenv
@@ -880,6 +880,76 @@ def get_recent_evidence_packages(client: httpx.Client, limit: int = 30) -> list[
         return []
     response.raise_for_status()
     return response.json()
+
+
+def admin_product_query_parts(raw_query: str) -> tuple[str, dict[str, str], list[str]]:
+    filters: dict[str, str] = {}
+    search_terms: list[str] = []
+    applied: list[str] = []
+    for token in re.split(r"\s+", (raw_query or "").strip()):
+        if not token:
+            continue
+        if token in {"缺图片", "无图片", "没有图片"}:
+            filters["product_image_url"] = "is.null"
+            applied.append("缺图片")
+            continue
+        if token in {"有图片", "已有图片"}:
+            filters["product_image_url"] = "not.is.null"
+            applied.append("有图片")
+            continue
+        door_match = re.fullmatch(r"(\d{1,2})门", token)
+        if door_match:
+            filters["door_count"] = f"eq.{door_match.group(1)}"
+            applied.append(token)
+            continue
+        if token in {"缺资料", "资料完整"}:
+            applied.append(f"{token}（当前页辅助筛选）")
+            continue
+        search_terms.append(token)
+    search_text = " ".join(search_terms).strip()
+    if search_text:
+        applied.append(f"关键词：{search_text}")
+    return search_text, filters, applied
+
+
+def get_admin_products_page(client: httpx.Client, raw_query: str = "", page_num: int = 1, per_page: int = 50) -> dict:
+    per_page = max(10, min(100, per_page or 50))
+    page_num = max(1, page_num or 1)
+    offset = (page_num - 1) * per_page
+    search_text, filters, applied = admin_product_query_parts(raw_query)
+    params = {
+        "select": "id,brand,equipment_model,product_type,product_image_url,updated_at,last_enriched_at,last_discovered_at,data_status,data_confidence,door_count,door_layout,door_positions,manufacturer,lifecycle_status",
+        "order": "brand.asc.nullslast,equipment_model.asc.nullslast,id.asc",
+        "limit": str(per_page),
+        "offset": str(offset),
+    }
+    params.update(filters)
+    if search_text:
+        safe_search = re.sub(r"[^A-Za-z0-9 ._/-]+", " ", search_text).strip()
+        if safe_search:
+            params["or"] = (
+                f"(brand.ilike.*{safe_search}*,"
+                f"equipment_model.ilike.*{safe_search}*,"
+                f"product_type.ilike.*{safe_search}*,"
+                f"manufacturer.ilike.*{safe_search}*)"
+            )
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/refrigerator_products",
+        params=params,
+        headers=supabase_headers("count=exact"),
+    )
+    response.raise_for_status()
+    total = parse_content_range_total(response.headers.get("content-range"))
+    total_pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    return {
+        "rows": response.json(),
+        "total": total,
+        "page": page_num,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "query": raw_query or "",
+        "applied": applied,
+    }
 
 
 def save_inferred_door_layout(client: httpx.Client, product: dict, positions: list[dict]) -> None:
@@ -2004,24 +2074,32 @@ pre{{white-space:pre-wrap;max-height:240px;overflow:auto;background:#f8fafc;bord
 <section><h2>内部原始资料</h2><div class="grid"><div><h3>产品快照</h3><pre>{esc(compact_json(product_snapshot))}</pre></div><div><h3>客户请求记录</h3><pre>{esc(compact_json(request or {}))}</pre></div></div></section>""")
 
 
-def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> bytes:
+def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> bytes:
     stats = stats or {}
+    products = products_page.get("rows") or []
     rows = []
-    for package in packages:
-        product = package.get("refrigerator_products") or {}
-        product_id = package.get("refrigerator_product_id") or product.get("id")
-        missing = package.get("missing_fields") or []
-        missing_text = ", ".join([item.get("label") or item.get("field_name") or "" for item in missing[:4]]) or "无"
+    for product in products:
+        product_id = product.get("id")
+        missing = []
+        if not product.get("product_image_url"):
+            missing.append("主图")
+        if not product.get("product_type"):
+            missing.append("产品类型")
+        if not product.get("door_count") and not product.get("door_positions"):
+            missing.append("门数/门位")
+        if not product.get("lifecycle_status"):
+            missing.append("在售状态")
+        missing_text = ", ".join(missing[:4]) or "无"
         image_state = "已有" if product.get("product_image_url") else "缺少"
         search_blob = " ".join(
             str(part or "")
             for part in [
                 product_id,
-                package.get("brand") or product.get("brand"),
-                package.get("equipment_model") or product.get("equipment_model"),
+                product.get("brand"),
+                product.get("equipment_model"),
                 product.get("product_type"),
                 product.get("door_layout"),
-                package.get("status"),
+                product.get("data_status"),
                 missing_text,
                 image_state,
             ]
@@ -2029,22 +2107,65 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
         missing_state = "missing" if missing else "complete"
         image_filter_state = "has-image" if product.get("product_image_url") else "missing-image"
         door_count_value = product.get("door_count") or ""
-        completeness_value = package.get("completeness_score") or 0
-        confidence_value = package.get("overall_confidence") or 0
+        completeness_value = int(round((4 - len(missing)) / 4 * 100))
+        confidence_value = product.get("data_confidence") or 0
         rows.append(
             f"""<tr data-product-row data-search="{esc(search_blob)}" data-image="{image_filter_state}" data-missing="{missing_state}" data-door-count="{esc(door_count_value)}" data-completeness="{esc(completeness_value)}" data-confidence="{esc(confidence_value)}">
 <td><a href="/ADMIN?product_id={esc(product_id)}">{esc(product_id)}</a></td>
-<td><strong>{esc(package.get('brand') or product.get('brand'))}</strong><br>{esc(package.get('equipment_model') or product.get('equipment_model'))}</td>
+<td><strong>{esc(product.get('brand'))}</strong><br>{esc(product.get('equipment_model'))}</td>
 <td>{esc(product.get('product_type') or '')}<br><span class="muted">{esc(product.get('door_layout') or '')}</span></td>
-<td>{esc(zh_status(package.get('status')))}</td>
-<td>{esc(package.get('completeness_score'))}%</td>
-<td>{esc(package.get('overall_confidence'))}%</td>
+<td>{esc(zh_status(product.get('data_status')))}</td>
+<td>{esc(completeness_value)}%</td>
+<td>{esc(confidence_value)}%</td>
 <td>{esc(image_state)}</td>
 <td>{esc(missing_text)}</td>
-<td><span class="muted">产品更新</span><br>{esc(product.get('updated_at') or '')}<br><span class="muted">最后补全</span><br>{esc(product.get('last_enriched_at') or '')}<br><span class="muted">证据包更新</span><br>{esc(package.get('updated_at') or '')}</td>
+<td><span class="muted">产品更新</span><br>{esc(product.get('updated_at') or '')}<br><span class="muted">最后补全</span><br>{esc(product.get('last_enriched_at') or '')}<br><span class="muted">发现时间</span><br>{esc(product.get('last_discovered_at') or '')}</td>
 </tr>"""
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>暂无产品证据包。</td></tr>"
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>没有找到匹配的产品型号。</td></tr>"
+    query_text = products_page.get("query") or ""
+    page_num = int(products_page.get("page") or 1)
+    per_page = int(products_page.get("per_page") or 50)
+    total = int(products_page.get("total") or 0)
+    total_pages = int(products_page.get("total_pages") or 1)
+    shown_from = (page_num - 1) * per_page + 1 if total else 0
+    shown_to = min(total, page_num * per_page)
+    applied_text = "；".join(products_page.get("applied") or []) or "全部产品"
+    def product_page_url(target_page: int, target_per_page: int | None = None) -> str:
+        params = {
+            "view": "products",
+            "q": query_text,
+            "page": str(max(1, target_page)),
+            "per_page": str(target_per_page or per_page),
+        }
+        return "/ADMIN?" + urlencode(params)
+    prev_link = product_page_url(page_num - 1) if page_num > 1 else ""
+    next_link = product_page_url(page_num + 1) if page_num < total_pages else ""
+    page_links = []
+    if total_pages <= 9:
+        page_numbers = list(range(1, total_pages + 1))
+    else:
+        page_numbers = sorted({1, 2, max(1, page_num - 1), page_num, min(total_pages, page_num + 1), total_pages - 1, total_pages})
+    previous_number = 0
+    for number in page_numbers:
+        if previous_number and number - previous_number > 1:
+            page_links.append("<span class='admin-page-gap'>...</span>")
+        if number == page_num:
+            page_links.append(f"<span class='admin-page-link active'>{number}</span>")
+        else:
+            page_links.append(f"<a class='admin-page-link' href='{esc(product_page_url(number))}'>{number}</a>")
+        previous_number = number
+    pagination_html = f"""
+<div class="admin-pagination">
+<div class="admin-result-summary">
+<strong>{esc(applied_text)}</strong>：共 <strong>{esc(total)}</strong> 条；每页 <strong>{esc(per_page)}</strong> 条；第 <strong>{esc(page_num)}</strong> / <strong>{esc(total_pages)}</strong> 页；本页显示 <strong>{esc(shown_from)}-{esc(shown_to)}</strong> 条。
+</div>
+<div class="admin-page-controls">
+{f"<a class='admin-page-link' href='{esc(prev_link)}'>上一页</a>" if prev_link else "<span class='admin-page-link disabled'>上一页</span>"}
+{''.join(page_links)}
+{f"<a class='admin-page-link' href='{esc(next_link)}'>下一页</a>" if next_link else "<span class='admin-page-link disabled'>下一页</span>"}
+</div>
+</div>"""
     recent_search_buttons = []
     for item in stats.get("recent_searches") or []:
         label = " ".join([str(item.get("detected_brand") or "").strip(), str(item.get("detected_model") or "").strip()]).strip()
@@ -2098,13 +2219,31 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
 .admin-filter-clear{{border-color:#d8a4a4;background:#fff7f7;color:#8a2828}}
 .admin-filter-help{{font-size:13px;color:#687385;line-height:1.55}}
 .admin-filter-count{{font-size:13px;color:#687385}}
+.admin-pagination{{display:grid;gap:10px;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:12px 14px;margin:0 0 12px}}
+.admin-result-summary{{font-size:14px;color:#334155;line-height:1.5}}
+.admin-page-controls{{display:flex;gap:7px;align-items:center;flex-wrap:wrap}}
+.admin-page-link{{border:1px solid #ccd6e2;background:#f8fafc;color:#0d1f2a;border-radius:7px;padding:7px 10px;text-decoration:none;font-size:13px}}
+.admin-page-link.active{{background:#0a6f78;color:#fff;border-color:#0a6f78;font-weight:800}}
+.admin-page-link.disabled{{opacity:.45}}
+.admin-page-gap{{color:#687385;padding:0 2px}}
+.admin-page-size{{display:flex;gap:8px;align-items:center;flex-wrap:wrap}}
+.admin-page-size select{{border:1px solid #ccd6e2;border-radius:8px;padding:10px 12px;background:white}}
 </style>
 <section><h2>后台产品数据库</h2>
 <p class="muted">内部查看产品资料证据、字段完整度、置信度和补全时间。</p>
 <div class="admin-actions"><a class="button" href="/ADMIN">订单列表</a><a class="button active" href="/ADMIN?view=products">产品数据库</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
 <div class="admin-filter-body" style="max-width:none;margin-bottom:12px">
+<form method="get" action="/ADMIN">
+<input type="hidden" name="view" value="products">
+<input type="hidden" name="page" value="1">
 <label for="admin-product-search">搜索产品数据库</label>
-<div class="admin-search-line"><input id="admin-product-search" type="search" placeholder="例如：Whirlpool WRF535SMHZ03；缺图片 3门 True；或：完整度<80 置信度>70"><button class="admin-search-button" type="button" id="admin-product-search-button">搜索</button></div>
+<div class="admin-search-line"><input id="admin-product-search" name="q" type="search" value="{esc(query_text)}" placeholder="例如：Whirlpool WRF535SMHZ03；缺图片 3门 True；或：完整度<80 置信度>70"><button class="admin-search-button" type="submit" id="admin-product-search-button">搜索</button></div>
+<div class="admin-page-size"><span class="admin-filter-help">每页显示</span><select name="per_page" onchange="this.form.submit()">
+<option value="25" {"selected" if per_page == 25 else ""}>25 条</option>
+<option value="50" {"selected" if per_page == 50 else ""}>50 条</option>
+<option value="100" {"selected" if per_page == 100 else ""}>100 条</option>
+</select></div>
+</form>
 <div class="admin-filter-help">支持：品牌/型号关键词、缺图片、有图片、缺资料、资料完整、1门/2门/3门/4门、完整度&lt;80、置信度&gt;70。</div>
 </div>
 </section>
@@ -2150,11 +2289,14 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
 <div class="admin-filter-count" id="admin-product-count"></div>
 </div>
 </details>
+{pagination_html}
 <table class="admin-table"><thead><tr><th>ID</th><th>产品</th><th>类型/结构</th><th>状态</th><th>完整度</th><th>置信度</th><th>图片</th><th>缺少资料</th><th>时间</th></tr></thead><tbody>{rows_html}</tbody></table>
+{pagination_html}
 <script>
 (() => {{
   const input = document.getElementById('admin-product-search');
   const searchButton = document.getElementById('admin-product-search-button');
+  const form = input?.form;
   const count = document.getElementById('admin-product-count');
   const rows = Array.from(document.querySelectorAll('[data-product-row]'));
   const filters = {{image:'all', missing:'all'}};
@@ -2210,7 +2352,6 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
   input?.addEventListener('input', update);
   input?.addEventListener('keydown', event => {{
     if (event.key === 'Enter') {{
-      event.preventDefault();
       update();
     }}
   }});
@@ -2219,6 +2360,7 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
     button.addEventListener('click', () => {{
       input.value = button.dataset.productQuery || '';
       update();
+      form?.submit();
       input.focus();
     }});
   }});
@@ -2238,6 +2380,7 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
       setActive(group, 'all');
     }});
     update();
+    form?.submit();
   }});
   update();
 }})();
@@ -2401,7 +2544,21 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     return
                 if view == "products":
-                    self.send_html(render_admin_dashboard(get_recent_evidence_packages(client), get_database_stats(client)))
+                    raw_product_query = (query.get("q") or [""])[0].strip()
+                    try:
+                        product_page = int((query.get("page") or ["1"])[0] or "1")
+                    except ValueError:
+                        product_page = 1
+                    try:
+                        product_per_page = int((query.get("per_page") or ["50"])[0] or "50")
+                    except ValueError:
+                        product_per_page = 50
+                    self.send_html(
+                        render_admin_dashboard(
+                            get_admin_products_page(client, raw_product_query, product_page, product_per_page),
+                            get_database_stats(client),
+                        )
+                    )
                     return
                 self.send_html(render_admin_orders_dashboard(get_recent_customer_orders(client)))
             return
