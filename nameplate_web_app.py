@@ -1744,6 +1744,17 @@ def get_database_stats(client: httpx.Client) -> dict:
     }
 
 
+def get_home_database_stats(client: httpx.Client) -> dict:
+    product_total = supabase_count(client, "refrigerator_products")
+    quote_items = supabase_count(client, "refrigerator_product_quote_items", select_field="refrigerator_product_id")
+    gasket_parts = supabase_count(client, "gasket_catalog")
+    return {
+        "product_total": product_total,
+        "quote_items": quote_items,
+        "known_profiles": gasket_parts,
+    }
+
+
 def shipping_address_text(order: dict) -> str:
     address = order.get("shipping_address") or {}
     if not isinstance(address, dict):
@@ -2311,8 +2322,8 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/":
             stats = None
             try:
-                with httpx.Client(timeout=20) as client:
-                    stats = get_database_stats(client)
+                with httpx.Client(timeout=8) as client:
+                    stats = get_home_database_stats(client)
             except Exception:
                 stats = None
             self.send_html(render_home(stats=stats))
