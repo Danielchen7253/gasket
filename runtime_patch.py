@@ -119,15 +119,24 @@ main{max-width:none;padding:0}
 .upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:26px}
 .upload-row button{width:auto;white-space:nowrap}
 .home-form .grid{grid-template-columns:1fr 1fr;margin-top:8px}
+.home-stats{width:100%;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:16px 0 0}
+.home-stats .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 @media(max-width:900px){.work-zone{grid-template-columns:1fr}.home-form .grid{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr}.upload-row button{width:100%;justify-content:center;text-align:center}}
+@media(max-width:900px){.home-stats .summary{grid-template-columns:1fr}}
 </style>"""
         return g["page"]("Gasket Match", f"""
 {upload_style}
-<div class="work-shell"><section class="work-zone">
+<div class="work-shell"><div class="work-zone"><div style="width:100%">
 <form id="upload" class="home-form" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
 <div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div></div>
 <div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div></form>
-</section></div>
+<section class="home-stats"><h2>Fit database coverage</h2><div class="summary">
+<div class="metric"><span>Refrigerator models</span><strong data-public-stat="product_total">...</strong></div>
+<div class="metric"><span>Door gasket records</span><strong data-public-stat="quote_items">...</strong></div>
+<div class="metric"><span>Known profile references</span><strong data-public-stat="known_profiles">...</strong></div>
+</div><p class="muted">Our matching database grows from real nameplate searches, gasket dimensions, profile references, and confirmed order history.</p></section>
+</div></div></div>
+<script>fetch('/public-stats',{{cache:'no-store'}}).then(r=>r.json()).then(data=>{{document.querySelectorAll('[data-public-stat]').forEach(el=>{{const key=el.getAttribute('data-public-stat');if(data&&data[key]!==undefined&&data[key]!==null)el.textContent=data[key];}});}}).catch(()=>{{}});</script>
 """)
 
     def evidence_html(package):
