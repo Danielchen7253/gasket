@@ -2788,6 +2788,11 @@ def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
 .admin-page-link.active{{background:#0a6f78;color:#fff;border-color:#0a6f78;font-weight:800}}
 .admin-page-link.disabled{{opacity:.45}}
 .admin-page-gap{{color:#687385;padding:0 2px}}
+.profile-visual-card{{width:190px;display:grid;gap:7px}}
+.profile-visual-svg,.profile-visual-img{{width:170px;height:94px;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc;display:block;object-fit:contain}}
+.profile-visual-meta{{display:grid;gap:2px;font-size:12px;line-height:1.25}}
+.profile-visual-meta strong{{font-size:13px;color:#0d1f2a}}
+.profile-visual-meta span{{color:#687385}}
 </style>
 <section><h2>后台密封条数据库</h2>
 <p class="muted">管理标准密封条本体：配件号、替代号、横截面、安装方式、尺寸和可适配范围。</p>
@@ -2864,6 +2869,11 @@ def render_admin_product_gaskets(gaskets_page: dict) -> bytes:
 .admin-page-link.active{{background:#0a6f78;color:#fff;border-color:#0a6f78;font-weight:800}}
 .admin-page-link.disabled{{opacity:.45}}
 .admin-page-gap{{color:#687385;padding:0 2px}}
+.profile-visual-card{{width:190px;display:grid;gap:7px}}
+.profile-visual-svg,.profile-visual-img{{width:170px;height:94px;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc;display:block;object-fit:contain}}
+.profile-visual-meta{{display:grid;gap:2px;font-size:12px;line-height:1.25}}
+.profile-visual-meta strong{{font-size:13px;color:#0d1f2a}}
+.profile-visual-meta span{{color:#687385}}
 </style>
 <section><h2>后台关联数据库</h2>
 <p class="muted">管理冰箱型号、门位、成品密封条和密封条横截面之间的关系。这里是产品数据库和密封条数据库之间的关联表。</p>
@@ -3000,6 +3010,54 @@ def profile_dimension_summary(item: dict) -> str:
     if isinstance(detailed, dict) and detailed:
         return compact_json(detailed)
     return "待补详细尺寸"
+
+
+def profile_visual(item: dict) -> str:
+    profile_type = (item.get("profile_type") or "").lower()
+    code = esc(item.get("profile_code") or "")
+    label = esc(profile_type_zh(profile_type) or "Profile")
+    width = esc(item.get("overall_width_in") or item.get("cross_section_width_in") or "")
+    height = esc(item.get("overall_height_in") or item.get("cross_section_height_in") or "")
+    image_url = item.get("profile_image_url")
+    if image_url:
+        visual = f'<img class="profile-visual-img" src="{esc(image_url)}" alt="{code}">'
+    elif profile_type == "dart":
+        visual = """
+<svg viewBox="0 0 170 94" class="profile-visual-svg" role="img" aria-label="Dart profile">
+  <path d="M26 22h86c18 0 30 13 30 30s-12 30-30 30H26z" fill="#e9f2f6" stroke="#0d1f2a" stroke-width="4"/>
+  <path d="M38 82l18-27h28l18 27z" fill="#0a6f78" stroke="#0d1f2a" stroke-width="4"/>
+  <rect x="106" y="34" width="24" height="35" rx="8" fill="#b9c6cf" stroke="#0d1f2a" stroke-width="3"/>
+</svg>"""
+    elif profile_type == "push_in":
+        visual = """
+<svg viewBox="0 0 170 94" class="profile-visual-svg" role="img" aria-label="Push-in profile">
+  <path d="M24 28h95c17 0 29 11 29 27s-12 27-29 27H24z" fill="#e9f2f6" stroke="#0d1f2a" stroke-width="4"/>
+  <path d="M38 82V58h46v24z" fill="#0a6f78" stroke="#0d1f2a" stroke-width="4"/>
+  <circle cx="118" cy="55" r="17" fill="#c9d6dd" stroke="#0d1f2a" stroke-width="3"/>
+</svg>"""
+    elif profile_type == "screw_in":
+        visual = """
+<svg viewBox="0 0 170 94" class="profile-visual-svg" role="img" aria-label="Screw-in profile">
+  <path d="M20 34h120c15 0 24 9 24 24s-9 24-24 24H20z" fill="#e9f2f6" stroke="#0d1f2a" stroke-width="4"/>
+  <rect x="20" y="66" width="92" height="16" fill="#0a6f78" stroke="#0d1f2a" stroke-width="4"/>
+  <circle cx="46" cy="74" r="5" fill="#fff" stroke="#0d1f2a" stroke-width="3"/>
+  <circle cx="86" cy="74" r="5" fill="#fff" stroke="#0d1f2a" stroke-width="3"/>
+</svg>"""
+    elif profile_type == "snap_in":
+        visual = """
+<svg viewBox="0 0 170 94" class="profile-visual-svg" role="img" aria-label="Snap-in profile">
+  <path d="M26 26h92c17 0 29 12 29 29s-12 29-29 29H26z" fill="#e9f2f6" stroke="#0d1f2a" stroke-width="4"/>
+  <path d="M45 84V62h18l10 12 10-12h18v22z" fill="#0a6f78" stroke="#0d1f2a" stroke-width="4"/>
+</svg>"""
+    else:
+        visual = """
+<svg viewBox="0 0 170 94" class="profile-visual-svg" role="img" aria-label="Special profile">
+  <path d="M22 48c0-18 13-28 31-28h34c17 0 28 10 28 26 0 19 35 8 35 29 0 7-5 12-13 12H22z" fill="#e9f2f6" stroke="#0d1f2a" stroke-width="4"/>
+  <path d="M36 86V62h36l14 24z" fill="#0a6f78" stroke="#0d1f2a" stroke-width="4"/>
+  <circle cx="106" cy="52" r="15" fill="#c9d6dd" stroke="#0d1f2a" stroke-width="3"/>
+</svg>"""
+    size = f'{width}" x {height}"' if width and height else "尺寸待补"
+    return f"""<div class="profile-visual-card">{visual}<div class="profile-visual-meta"><strong>{code}</strong><span>{label}</span><span>{esc(size)}</span></div></div>"""
 
 
 def finished_gasket_dimension_summary(item: dict) -> str:
@@ -3164,6 +3222,7 @@ def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
             f"""<tr>
 <td><a href="/ADMIN?gasket_catalog_id={esc(item.get('id'))}">#{esc(item.get('id'))}</a></td>
 <td><strong>{esc(item.get('profile_code'))}</strong><br><span class="muted">{esc(item.get('profile_name'))}</span></td>
+<td>{profile_visual(item)}</td>
 <td>{esc(profile_type_zh(item.get('profile_type')))}<br><span class="muted">市场占比 {esc(item.get('estimated_market_share_pct'))}%</span></td>
 <td>{esc(item.get('profile_style') or item.get('profile_family'))}<br><span class="muted">{esc(item.get('style_code'))}</span></td>
 <td>{esc(dimensions)}</td>
@@ -3172,7 +3231,7 @@ def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
 <td>{esc(item.get('source_name'))}<br><span class="muted">{esc(short_datetime(item.get('updated_at')))}</span></td>
 </tr>"""
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='8'>没有找到密封条横截面记录。</td></tr>"
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>没有找到密封条横截面记录。</td></tr>"
     query_text = catalog_page.get("query") or ""
     page_num = int(catalog_page.get("page") or 1)
     per_page = int(catalog_page.get("per_page") or 50)
@@ -3200,6 +3259,11 @@ def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
 .admin-page-link.active{{background:#0a6f78;color:#fff;border-color:#0a6f78;font-weight:800}}
 .admin-page-link.disabled{{opacity:.45}}
 .admin-page-gap{{color:#687385;padding:0 2px}}
+.profile-visual-card{{width:190px;display:grid;gap:7px}}
+.profile-visual-svg,.profile-visual-img{{width:170px;height:94px;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc;display:block;object-fit:contain}}
+.profile-visual-meta{{display:grid;gap:2px;font-size:12px;line-height:1.25}}
+.profile-visual-meta strong{{font-size:13px;color:#0d1f2a}}
+.profile-visual-meta span{{color:#687385}}
 </style>
 <section><h2>后台密封条数据库</h2>
 <p class="muted">这里保存的是密封条横截面本体：类型、样式、详细截面尺寸、制造说明和覆盖场景。成品尺寸与冰箱适配关系在关联数据库中管理。</p>
@@ -3219,7 +3283,7 @@ def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
 <div class="admin-filter-help">目标是沉淀 30-50 种高频横截面，覆盖美国商用冰箱维修市场的大部分需求。</div>
 </div>
 {pagination_html}
-<table class="admin-table"><thead><tr><th>ID</th><th>Profile</th><th>横截面类型</th><th>横截面样式</th><th>详细尺寸</th><th>安装/材料</th><th>成品/适配</th><th>来源/时间</th></tr></thead><tbody>{rows_html}</tbody></table>
+<table class="admin-table"><thead><tr><th>ID</th><th>Profile</th><th>样式图片</th><th>横截面类型</th><th>横截面样式</th><th>详细尺寸</th><th>安装/材料</th><th>成品/适配</th><th>来源/时间</th></tr></thead><tbody>{rows_html}</tbody></table>
 {pagination_html}
 </section>""")
 
