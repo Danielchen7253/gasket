@@ -2419,6 +2419,7 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
   const input = document.getElementById('admin-product-search');
   const searchButton = document.getElementById('admin-product-search-button');
   const form = input?.form;
+  const serverQuery = (input?.value || '').trim().toLowerCase();
   const count = document.getElementById('admin-product-count');
   const rows = Array.from(document.querySelectorAll('[data-product-row]'));
   const filters = {{image:'all', missing:'all'}};
@@ -2489,7 +2490,8 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
     }});
   }};
   const update = () => {{
-    const q = (input.value || '').trim().toLowerCase();
+    const typedQuery = (input.value || '').trim().toLowerCase();
+    const q = typedQuery === serverQuery ? '' : typedQuery;
     let visible = 0;
     rows.forEach(row => {{
       const textOk = textFilterOk(row, q);
