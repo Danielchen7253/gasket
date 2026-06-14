@@ -1346,13 +1346,25 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 </body></html>""".encode("utf-8")
 
 
-def render_home(message: str = "") -> bytes:
+def render_home(message: str = "", stats: dict | None = None) -> bytes:
     warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
+    stats = stats or {}
+    stats_html = ""
+    if stats:
+        stats_html = f"""
+<section><h2>Fit database coverage</h2>
+<div class="summary">
+<div class="metric"><span>Refrigerator models</span><strong>{esc(stats.get('product_total'))}</strong></div>
+<div class="metric"><span>Door gasket records</span><strong>{esc(stats.get('quote_items'))}</strong></div>
+<div class="metric"><span>Known profile references</span><strong>{esc(stats.get('known_profiles'))}</strong></div>
+</div>
+<p class="muted">Our matching database grows from real nameplate searches, product records, gasket dimensions, profile references, and confirmed order history.</p>
+</section>"""
     return page("Gasket Match", f"""
 <section><form id="upload" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
 <div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>
 <div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div></div>
-<p class="muted">You can correct the brand or model before matching the database.</p></form></section>""")
+<p class="muted">You can correct the brand or model before matching the database.</p></form></section>{stats_html}""")
 
 
 def render_confirm_nameplate(upload_url: str, customer: dict, nameplate_data: dict, fallback_brand: str = "", fallback_model: str = "") -> bytes:
@@ -1644,6 +1656,94 @@ def get_customer_order(client: httpx.Client, order_id: int) -> dict | None:
     return rows[0] if rows else None
 
 
+def parse_content_range_total(value: str | None) -> int:
+    match = re.search(r"/(\d+|\*)$", value or "")
+    if not match or match.group(1) == "*":
+        return 0
+    return int(match.group(1))
+
+
+def supabase_count(client: httpx.Client, table: str, filters: dict[str, str] | None = None) -> int:
+    params = {"select": "id", "limit": "1"}
+    if filters:
+        params.update(filters)
+    try:
+        response = client.get(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            params=params,
+            headers=supabase_headers("count=exact"),
+        )
+        if response.status_code >= 400:
+            return 0
+        return parse_content_range_total(response.headers.get("content-range"))
+    except Exception:
+        return 0
+
+
+def get_recent_searches(client: httpx.Client, limit: int = 8) -> list[dict]:
+    try:
+        response = client.get(
+            f"{SUPABASE_URL}/rest/v1/gasket_requests",
+            params={
+                "select": "detected_brand,detected_model,status,created_at,matched_refrigerator_product_id",
+                "order": "created_at.desc",
+                "limit": str(limit),
+            },
+            headers=supabase_headers(),
+        )
+        if response.status_code >= 400:
+            return []
+        return response.json()
+    except Exception:
+        return []
+
+
+def count_known_profiles(client: httpx.Client) -> int:
+    profile_values = set()
+    try:
+        response = client.get(
+            f"{SUPABASE_URL}/rest/v1/refrigerator_product_quote_items",
+            params={"select": "gasket_profile,profile_image_url,gasket_install_type", "limit": "5000"},
+            headers=supabase_headers(),
+        )
+        if response.status_code < 400:
+            for row in response.json():
+                for key in ("gasket_profile", "profile_image_url", "gasket_install_type"):
+                    value = str(row.get(key) or "").strip().lower()
+                    if value and value not in {"unknown", "n/a", "not listed", "not publicly listed"}:
+                        profile_values.add(value)
+    except Exception:
+        pass
+    return len(profile_values)
+
+
+def get_database_stats(client: httpx.Client) -> dict:
+    product_total = supabase_count(client, "refrigerator_products")
+    product_images = supabase_count(client, "refrigerator_products", {"product_image_url": "not.is.null"})
+    quote_items = supabase_count(client, "refrigerator_product_quote_items")
+    quote_items_with_size = supabase_count(client, "refrigerator_product_quote_items", {"dimensions_text": "not.is.null"})
+    trusted_products = supabase_count(client, "refrigerator_products", {"data_confidence": "gte.100"})
+    trusted_gaskets = supabase_count(client, "refrigerator_product_quote_items", {"confidence_score": "gte.100"})
+    customer_orders = supabase_count(client, "customer_orders")
+    gasket_parts = supabase_count(client, "gasket_catalog")
+    recent_searches = get_recent_searches(client)
+    known_profiles = count_known_profiles(client)
+    return {
+        "product_total": product_total,
+        "product_images": product_images,
+        "product_image_rate": round((product_images / product_total * 100), 1) if product_total else 0,
+        "quote_items": quote_items,
+        "quote_items_with_size": quote_items_with_size,
+        "quote_size_rate": round((quote_items_with_size / quote_items * 100), 1) if quote_items else 0,
+        "trusted_products": trusted_products,
+        "trusted_gaskets": trusted_gaskets,
+        "customer_orders": customer_orders,
+        "gasket_parts": gasket_parts,
+        "known_profiles": known_profiles,
+        "recent_searches": recent_searches,
+    }
+
+
 def shipping_address_text(order: dict) -> str:
     address = order.get("shipping_address") or {}
     if not isinstance(address, dict):
@@ -1888,7 +1988,8 @@ pre{{white-space:pre-wrap;max-height:240px;overflow:auto;background:#f8fafc;bord
 <section><h2>内部原始资料</h2><div class="grid"><div><h3>产品快照</h3><pre>{esc(compact_json(product_snapshot))}</pre></div><div><h3>客户请求记录</h3><pre>{esc(compact_json(request or {}))}</pre></div></div></section>""")
 
 
-def render_admin_dashboard(packages: list[dict]) -> bytes:
+def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> bytes:
+    stats = stats or {}
     rows = []
     for package in packages:
         product = package.get("refrigerator_products") or {}
@@ -1928,6 +2029,30 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
 </tr>"""
         )
     rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>暂无产品证据包。</td></tr>"
+    recent_search_buttons = []
+    for item in stats.get("recent_searches") or []:
+        label = " ".join([str(item.get("detected_brand") or "").strip(), str(item.get("detected_model") or "").strip()]).strip()
+        if label:
+            recent_search_buttons.append(f"""<button type="button" class="admin-filter-chip" data-product-query="{esc(label)}">{esc(label)}</button>""")
+    recent_search_html = "".join(recent_search_buttons) or "<span class='muted'>暂无最近搜索记录</span>"
+    stats_html = f"""
+<section><h2>数据库看板</h2>
+<div class="summary">
+<div class="metric"><span>产品型号</span><strong>{esc(stats.get('product_total'))}</strong></div>
+<div class="metric"><span>已有主图</span><strong>{esc(stats.get('product_images'))}</strong><span class="muted">{esc(stats.get('product_image_rate'))}%</span></div>
+<div class="metric"><span>密封条记录</span><strong>{esc(stats.get('quote_items'))}</strong></div>
+<div class="metric"><span>有尺寸记录</span><strong>{esc(stats.get('quote_items_with_size'))}</strong><span class="muted">{esc(stats.get('quote_size_rate'))}%</span></div>
+<div class="metric"><span>横截面/型材参考</span><strong>{esc(stats.get('known_profiles'))}</strong></div>
+<div class="metric"><span>100%可信资料</span><strong>{esc(stats.get('trusted_products'))}</strong><span class="muted">产品</span></div>
+<div class="metric"><span>100%可信密封条</span><strong>{esc(stats.get('trusted_gaskets'))}</strong></div>
+<div class="metric"><span>内部订单</span><strong>{esc(stats.get('customer_orders'))}</strong></div>
+<div class="metric"><span>通用密封条库</span><strong>{esc(stats.get('gasket_parts'))}</strong></div>
+</div>
+<details class="admin-filter" style="margin-top:14px">
+<summary>最近搜索型号</summary>
+<div class="admin-filter-body"><div class="admin-filter-row">{recent_search_html}</div></div>
+</details>
+</section>"""
     return page("后台产品数据库", f"""
 <style>
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
@@ -1955,6 +2080,9 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
 <section><h2>后台产品数据库</h2>
 <p class="muted">内部查看产品资料证据、字段完整度、置信度和补全时间。</p>
 <div class="admin-actions"><a class="button" href="/ADMIN">订单列表</a><a class="button active" href="/ADMIN?view=products">产品数据库</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
+</section>
+{stats_html}
+<section>
 <details class="admin-filter">
 <summary>筛选产品资料</summary>
 <div class="admin-filter-body">
@@ -1974,6 +2102,27 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
 <button class="admin-filter-chip" type="button" data-product-filter-group="missing" data-filter-value="missing">缺少资料</button>
 <button class="admin-filter-chip admin-filter-clear" type="button" data-product-filter-reset>清空筛选</button>
 </div>
+<details class="admin-filter" style="margin-top:8px">
+<summary>快捷搜索链接</summary>
+<div class="admin-filter-body">
+<div class="admin-filter-row">
+<button type="button" class="admin-filter-chip" data-product-query="缺图片">缺图片</button>
+<button type="button" class="admin-filter-chip" data-product-query="有图片">有图片</button>
+<button type="button" class="admin-filter-chip" data-product-query="缺资料">缺资料</button>
+<button type="button" class="admin-filter-chip" data-product-query="资料完整">资料完整</button>
+<button type="button" class="admin-filter-chip" data-product-query="1门">1门</button>
+<button type="button" class="admin-filter-chip" data-product-query="2门">2门</button>
+<button type="button" class="admin-filter-chip" data-product-query="3门">3门</button>
+<button type="button" class="admin-filter-chip" data-product-query="4门">4门</button>
+<button type="button" class="admin-filter-chip" data-product-query="8门">8门</button>
+<button type="button" class="admin-filter-chip" data-product-query="完整度<80">完整度&lt;80</button>
+<button type="button" class="admin-filter-chip" data-product-query="置信度<70">置信度&lt;70</button>
+<button type="button" class="admin-filter-chip" data-product-query="Whirlpool">Whirlpool</button>
+<button type="button" class="admin-filter-chip" data-product-query="True">True</button>
+<button type="button" class="admin-filter-chip" data-product-query="Sub-Zero">Sub-Zero</button>
+</div>
+</div>
+</details>
 <div class="admin-filter-count" id="admin-product-count"></div>
 </div>
 </details>
@@ -2034,6 +2183,13 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
     count.textContent = q ? `显示 ${{visible}} / ${{rows.length}} 条产品资料` : `共 ${{rows.length}} 条产品资料`;
   }};
   input?.addEventListener('input', update);
+  document.querySelectorAll('[data-product-query]').forEach(button => {{
+    button.addEventListener('click', () => {{
+      input.value = button.dataset.productQuery || '';
+      update();
+      input.focus();
+    }});
+  }});
   document.querySelectorAll('[data-product-filter-group]').forEach(button => {{
     button.addEventListener('click', () => {{
       const group = button.dataset.productFilterGroup;
@@ -2153,7 +2309,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/":
-            self.send_html(render_home())
+            stats = None
+            try:
+                with httpx.Client(timeout=20) as client:
+                    stats = get_database_stats(client)
+            except Exception:
+                stats = None
+            self.send_html(render_home(stats=stats))
             return
         if parsed.path.lower() == "/admin":
             if not is_admin_authenticated(self.headers.get("Cookie")):
@@ -2198,7 +2360,7 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     return
                 if view == "products":
-                    self.send_html(render_admin_dashboard(get_recent_evidence_packages(client)))
+                    self.send_html(render_admin_dashboard(get_recent_evidence_packages(client), get_database_stats(client)))
                     return
                 self.send_html(render_admin_orders_dashboard(get_recent_customer_orders(client)))
             return
