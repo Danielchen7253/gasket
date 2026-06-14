@@ -3012,6 +3012,28 @@ def profile_dimension_summary(item: dict) -> str:
     return "待补详细尺寸"
 
 
+def gasket_internal_model(item: dict) -> str:
+    sku = str(item.get("profile_code") or "").strip()
+    match = re.search(r"(\d+)$", sku)
+    if match:
+        return f"C-{int(match.group(1)):03d}"
+    item_id = item.get("id")
+    try:
+        return f"C-{int(item_id):03d}"
+    except (TypeError, ValueError):
+        return "C-000"
+
+
+def gasket_manufacturer_model(item: dict) -> str:
+    return (
+        item.get("style_code")
+        or item.get("profile_name")
+        or item.get("profile_style")
+        or item.get("profile_family")
+        or ""
+    )
+
+
 def profile_visual(item: dict) -> str:
     profile_type = (item.get("profile_type") or "").lower()
     code = esc(item.get("profile_code") or "")
@@ -3058,6 +3080,13 @@ def profile_visual(item: dict) -> str:
 </svg>"""
     size = f'{width}" x {height}"' if width and height else "尺寸待补"
     return f"""<div class="profile-visual-card">{visual}<div class="profile-visual-meta"><strong>{code}</strong><span>{label}</span><span>{esc(size)}</span></div></div>"""
+
+
+def profile_table_image(item: dict) -> str:
+    image_url = item.get("profile_image_url")
+    if image_url:
+        return f'<img class="profile-visual-img" src="{esc(image_url)}" alt="{esc(item.get("profile_code") or "gasket profile")}">'
+    return "<span class='muted'>图片待补</span>"
 
 
 def finished_gasket_dimension_summary(item: dict) -> str:
@@ -3216,28 +3245,19 @@ def get_catalog_applications(client: httpx.Client, catalog_id: int, limit: int =
 def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
     rows = []
     for item in catalog_page.get("rows") or []:
-        counts = f"成品 {item.get('tested_finished_gasket_count') or 0} / 关联 {item.get('linked_application_count') or 0}"
         rows.append(
             f"""<tr>
 <td><a href="/ADMIN?gasket_catalog_id={esc(item.get('id'))}">#{esc(item.get('id'))}</a></td>
-<td><strong>{esc(item.get('profile_code'))}</strong><br><span class="muted">{esc(item.get('profile_name'))}</span></td>
-<td>{profile_visual(item)}</td>
-<td>{esc(profile_type_zh(item.get('profile_type')))}<br><span class="muted">市场占比 {esc(item.get('estimated_market_share_pct'))}%</span></td>
-<td>{esc(item.get('profile_style') or item.get('profile_family'))}<br><span class="muted">{esc(item.get('style_code'))}</span></td>
-<td class="dimension-col">{esc(item.get('overall_width_in') or item.get('cross_section_width_in'))}</td>
-<td class="dimension-col">{esc(item.get('overall_height_in') or item.get('cross_section_height_in'))}</td>
-<td class="dimension-col">{esc(item.get('base_width_in'))}</td>
-<td class="dimension-col">{esc(item.get('base_height_in'))}</td>
-<td class="dimension-col">{esc(item.get('compression_bulb_width_in'))}</td>
-<td class="dimension-col">{esc(item.get('compression_bulb_height_in'))}</td>
-<td class="dimension-col">{esc(item.get('magnet_cavity_width_in') or item.get('magnet_width_in'))}</td>
-<td class="dimension-col">{esc(item.get('magnet_cavity_height_in'))}</td>
-<td>{esc(item.get('mounting_method'))}<br><span class="muted">{'磁性' if item.get('magnetic') else '非磁性或待确认'} / {esc(item.get('material'))} / {esc(item.get('color'))}</span></td>
-<td>{esc(counts)}<br><span class="muted">{esc(item.get('common_use_cases'))}</span></td>
-<td>{esc(item.get('source_name'))}<br><span class="muted">{esc(short_datetime(item.get('updated_at')))}</span></td>
+<td><strong>{esc(gasket_internal_model(item))}</strong></td>
+<td><strong>{esc(item.get('profile_code'))}</strong></td>
+<td>{esc(gasket_manufacturer_model(item))}</td>
+<td>{profile_table_image(item)}</td>
+<td>{esc(item.get('color'))}</td>
+<td>{esc(profile_dimension_summary(item))}</td>
+<td>{esc(short_datetime(item.get('updated_at')))}</td>
 </tr>"""
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='16'>没有找到密封条横截面记录。</td></tr>"
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='8'>没有找到密封条记录。</td></tr>"
     query_text = catalog_page.get("query") or ""
     page_num = int(catalog_page.get("page") or 1)
     per_page = int(catalog_page.get("per_page") or 50)
@@ -3249,7 +3269,6 @@ def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
 <style>
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
-.admin-table th.dimension-col,.admin-table td.dimension-col{{min-width:74px;text-align:right;white-space:nowrap}}
 .admin-table th{{background:#f8fafc;color:#687385}}
 .admin-filter-body{{border:1px solid #dbe2ea;border-radius:8px;background:#fff;padding:14px;display:grid;gap:8px;max-width:none;margin-bottom:12px}}
 .admin-filter-body label{{font-size:13px;color:#687385}}
@@ -3290,7 +3309,7 @@ def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
 <div class="admin-filter-help">目标是沉淀 30-50 种高频横截面，覆盖美国商用冰箱维修市场的大部分需求。</div>
 </div>
 {pagination_html}
-<table class="admin-table"><thead><tr><th>ID</th><th>Profile</th><th>样式图片</th><th>横截面类型</th><th>横截面样式</th><th class="dimension-col">整体宽</th><th class="dimension-col">整体高</th><th class="dimension-col">底座宽</th><th class="dimension-col">底座高</th><th class="dimension-col">气囊宽</th><th class="dimension-col">气囊高</th><th class="dimension-col">磁条腔宽</th><th class="dimension-col">磁条腔高</th><th>安装/材料</th><th>成品/适配</th><th>来源/时间</th></tr></thead><tbody>{rows_html}</tbody></table>
+<table class="admin-table"><thead><tr><th>ID</th><th>我们自己的型号</th><th>SKU</th><th>厂家型号</th><th>图片</th><th>颜色</th><th>尺寸</th><th>入库时间</th></tr></thead><tbody>{rows_html}</tbody></table>
 {pagination_html}
 </section>""")
 
