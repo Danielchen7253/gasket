@@ -1705,6 +1705,7 @@ def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
 .admin-table th{{background:#f8fafc;color:#687385}}
 .admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
 .admin-actions .logout{{margin-left:auto}}
+.admin-actions .active{{background:#0d1f2a}}
 .admin-filter{{border:1px solid #dbe2ea;border-radius:8px;background:#fff;margin:0 0 14px;overflow:hidden}}
 .admin-filter summary{{cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;font-weight:700;color:#0d1f2a;list-style:none}}
 .admin-filter summary::-webkit-details-marker{{display:none}}
@@ -1722,7 +1723,7 @@ def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
 </style>
 <section><h2>后台订单</h2>
 <p class="muted">工作人员查看客户订单、生产资料和后续联系记录。</p>
-<div class="admin-actions"><a class="button" href="/ADMIN">订单列表</a><a class="button" href="/ADMIN?view=products">产品数据库</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
+<div class="admin-actions"><a class="button active" href="/ADMIN">订单列表</a><a class="button" href="/ADMIN?view=products">产品数据库</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
 <details class="admin-filter">
 <summary>筛选订单</summary>
 <div class="admin-filter-body">
@@ -1895,8 +1896,23 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
         missing = package.get("missing_fields") or []
         missing_text = ", ".join([item.get("label") or item.get("field_name") or "" for item in missing[:4]]) or "无"
         image_state = "已有" if product.get("product_image_url") else "缺少"
+        search_blob = " ".join(
+            str(part or "")
+            for part in [
+                product_id,
+                package.get("brand") or product.get("brand"),
+                package.get("equipment_model") or product.get("equipment_model"),
+                product.get("product_type"),
+                product.get("door_layout"),
+                package.get("status"),
+                missing_text,
+                image_state,
+            ]
+        ).lower()
+        missing_state = "missing" if missing else "complete"
+        image_filter_state = "has-image" if product.get("product_image_url") else "missing-image"
         rows.append(
-            f"""<tr>
+            f"""<tr data-product-row data-search="{esc(search_blob)}" data-image="{image_filter_state}" data-missing="{missing_state}">
 <td><a href="/ADMIN?product_id={esc(product_id)}">{esc(product_id)}</a></td>
 <td><strong>{esc(package.get('brand') or product.get('brand'))}</strong><br>{esc(package.get('equipment_model') or product.get('equipment_model'))}</td>
 <td>{esc(product.get('product_type') or '')}<br><span class="muted">{esc(product.get('door_layout') or '')}</span></td>
@@ -1914,12 +1930,94 @@ def render_admin_dashboard(packages: list[dict]) -> bytes:
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
 .admin-table th{{background:#f8fafc;color:#687385}}
-.admin-actions{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}}
+.admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
+.admin-actions .logout{{margin-left:auto}}
+.admin-actions .active{{background:#0d1f2a}}
+.admin-filter{{border:1px solid #dbe2ea;border-radius:8px;background:#fff;margin:0 0 14px;overflow:hidden}}
+.admin-filter summary{{cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;font-weight:700;color:#0d1f2a;list-style:none}}
+.admin-filter summary::-webkit-details-marker{{display:none}}
+.admin-filter summary::after{{content:"+";font-size:18px;color:#087b83}}
+.admin-filter[open] summary::after{{content:"-"}}
+.admin-filter-body{{border-top:1px solid #e7edf3;padding:14px;display:grid;gap:8px;max-width:560px}}
+.admin-filter-body label{{font-size:13px;color:#687385}}
+.admin-filter-body input{{width:100%;box-sizing:border-box;border:1px solid #ccd6e2;border-radius:8px;padding:11px 12px;font-size:15px}}
+.admin-filter-row{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}}
+.admin-filter-title{{font-size:13px;color:#687385;min-width:62px}}
+.admin-filter-chip{{border:1px solid #ccd6e2;background:#f8fafc;color:#0d1f2a;border-radius:999px;padding:8px 12px;font-size:13px;cursor:pointer}}
+.admin-filter-chip.active{{border-color:#087b83;background:#e7f7f8;color:#05656b;font-weight:700}}
+.admin-filter-clear{{border-color:#d8a4a4;background:#fff7f7;color:#8a2828}}
+.admin-filter-count{{font-size:13px;color:#687385}}
 </style>
 <section><h2>后台产品数据库</h2>
 <p class="muted">内部查看产品资料证据、字段完整度、置信度和补全时间。</p>
-<div class="admin-actions"><a class="button" href="/">前台上传页</a><a class="button" href="/ADMIN">订单列表</a><a class="button" href="/ADMIN?view=products">刷新产品数据库</a><a class="button" href="/ADMIN/logout">退出登录</a></div>
+<div class="admin-actions"><a class="button" href="/ADMIN">订单列表</a><a class="button active" href="/ADMIN?view=products">产品数据库</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
+<details class="admin-filter">
+<summary>筛选产品资料</summary>
+<div class="admin-filter-body">
+<label for="admin-product-search">搜索 ID、品牌、型号、产品类型、门位结构或缺少资料</label>
+<input id="admin-product-search" type="search" placeholder="输入关键词筛选产品资料">
+<div class="admin-filter-row" aria-label="图片状态筛选">
+<span class="admin-filter-title">图片</span>
+<button class="admin-filter-chip active" type="button" data-product-filter-group="image" data-filter-value="all">全部</button>
+<button class="admin-filter-chip" type="button" data-product-filter-group="image" data-filter-value="has-image">已有图片</button>
+<button class="admin-filter-chip" type="button" data-product-filter-group="image" data-filter-value="missing-image">缺少图片</button>
+</div>
+<div class="admin-filter-row" aria-label="资料状态筛选">
+<span class="admin-filter-title">资料</span>
+<button class="admin-filter-chip active" type="button" data-product-filter-group="missing" data-filter-value="all">全部</button>
+<button class="admin-filter-chip" type="button" data-product-filter-group="missing" data-filter-value="complete">资料完整</button>
+<button class="admin-filter-chip" type="button" data-product-filter-group="missing" data-filter-value="missing">缺少资料</button>
+<button class="admin-filter-chip admin-filter-clear" type="button" data-product-filter-reset>清空筛选</button>
+</div>
+<div class="admin-filter-count" id="admin-product-count"></div>
+</div>
+</details>
 <table class="admin-table"><thead><tr><th>ID</th><th>产品</th><th>类型/结构</th><th>状态</th><th>完整度</th><th>置信度</th><th>图片</th><th>缺少资料</th><th>时间</th></tr></thead><tbody>{rows_html}</tbody></table>
+<script>
+(() => {{
+  const input = document.getElementById('admin-product-search');
+  const count = document.getElementById('admin-product-count');
+  const rows = Array.from(document.querySelectorAll('[data-product-row]'));
+  const filters = {{image:'all', missing:'all'}};
+  const setActive = (group, value) => {{
+    document.querySelectorAll(`[data-product-filter-group="${{group}}"]`).forEach(button => {{
+      button.classList.toggle('active', button.dataset.filterValue === value);
+    }});
+  }};
+  const update = () => {{
+    const q = (input.value || '').trim().toLowerCase();
+    let visible = 0;
+    rows.forEach(row => {{
+      const textOk = !q || (row.dataset.search || '').includes(q);
+      const imageOk = filters.image === 'all' || row.dataset.image === filters.image;
+      const missingOk = filters.missing === 'all' || row.dataset.missing === filters.missing;
+      const ok = textOk && imageOk && missingOk;
+      row.style.display = ok ? '' : 'none';
+      if (ok) visible += 1;
+    }});
+    count.textContent = q ? `显示 ${{visible}} / ${{rows.length}} 条产品资料` : `共 ${{rows.length}} 条产品资料`;
+  }};
+  input?.addEventListener('input', update);
+  document.querySelectorAll('[data-product-filter-group]').forEach(button => {{
+    button.addEventListener('click', () => {{
+      const group = button.dataset.productFilterGroup;
+      const value = button.dataset.filterValue;
+      filters[group] = value;
+      setActive(group, value);
+      update();
+    }});
+  }});
+  document.querySelector('[data-product-filter-reset]')?.addEventListener('click', () => {{
+    input.value = '';
+    Object.keys(filters).forEach(group => {{
+      filters[group] = 'all';
+      setActive(group, 'all');
+    }});
+    update();
+  }});
+  update();
+}})();
+</script>
 </section>""")
 
 
