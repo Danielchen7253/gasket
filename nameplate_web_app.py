@@ -2089,6 +2089,8 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
 .admin-filter-body{{border-top:1px solid #e7edf3;padding:14px;display:grid;gap:8px;max-width:560px}}
 .admin-filter-body label{{font-size:13px;color:#687385}}
 .admin-filter-body input{{width:100%;box-sizing:border-box;border:1px solid #ccd6e2;border-radius:8px;padding:11px 12px;font-size:15px}}
+.admin-search-line{{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}}
+.admin-search-button{{border:0;background:#0a6f78;color:#fff;border-radius:8px;min-height:42px;padding:0 18px;font-weight:700;cursor:pointer}}
 .admin-filter-row{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}}
 .admin-filter-title{{font-size:13px;color:#687385;min-width:62px}}
 .admin-filter-chip{{border:1px solid #ccd6e2;background:#f8fafc;color:#0d1f2a;border-radius:999px;padding:8px 12px;font-size:13px;cursor:pointer}}
@@ -2107,7 +2109,7 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
 <summary>筛选产品资料</summary>
 <div class="admin-filter-body">
 <label for="admin-product-search">输入你想要的筛选条件</label>
-<input id="admin-product-search" type="search" placeholder="例如：缺图片 3门 True；或：完整度<80 置信度>70">
+<div class="admin-search-line"><input id="admin-product-search" type="search" placeholder="例如：缺图片 3门 True；或：完整度<80 置信度>70"><button class="admin-search-button" type="button" id="admin-product-search-button">搜索</button></div>
 <div class="admin-filter-help">支持：品牌/型号关键词、缺图片、有图片、缺资料、资料完整、1门/2门/3门/4门、完整度&lt;80、置信度&gt;70。</div>
 <div class="admin-filter-row" aria-label="图片状态筛选">
 <span class="admin-filter-title">图片</span>
@@ -2150,6 +2152,7 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
 <script>
 (() => {{
   const input = document.getElementById('admin-product-search');
+  const searchButton = document.getElementById('admin-product-search-button');
   const count = document.getElementById('admin-product-count');
   const rows = Array.from(document.querySelectorAll('[data-product-row]'));
   const filters = {{image:'all', missing:'all'}};
@@ -2203,6 +2206,13 @@ def render_admin_dashboard(packages: list[dict], stats: dict | None = None) -> b
     count.textContent = q ? `显示 ${{visible}} / ${{rows.length}} 条产品资料` : `共 ${{rows.length}} 条产品资料`;
   }};
   input?.addEventListener('input', update);
+  input?.addEventListener('keydown', event => {{
+    if (event.key === 'Enter') {{
+      event.preventDefault();
+      update();
+    }}
+  }});
+  searchButton?.addEventListener('click', update);
   document.querySelectorAll('[data-product-query]').forEach(button => {{
     button.addEventListener('click', () => {{
       input.value = button.dataset.productQuery || '';
