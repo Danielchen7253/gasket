@@ -897,6 +897,65 @@ def admin_product_query_parts(raw_query: str) -> tuple[str, dict[str, str], list
             filters["product_image_url"] = "not.is.null"
             applied.append("有图片")
             continue
+        if token.lower() in {"commercial", "商用", "商用冰箱", "商用制冷"}:
+            filters["market_category"] = "eq.commercial"
+            applied.append("商用")
+            continue
+        if token.lower() in {"residential", "民用", "家用", "家用冰箱"}:
+            filters["market_category"] = "eq.residential"
+            applied.append("家用")
+            continue
+        if token.lower() in {"unknown", "未知", "未分类"}:
+            filters["market_category"] = "eq.unknown"
+            applied.append("未分类")
+            continue
+        sector_map = {
+            "restaurant": "restaurant",
+            "饭店": "restaurant",
+            "餐厅": "restaurant",
+            "restaurant_kitchen": "restaurant",
+            "supermarket": "supermarket",
+            "商超": "supermarket",
+            "超市": "supermarket",
+            "medical": "medical",
+            "医疗": "medical",
+            "bar": "bar",
+            "酒吧": "bar",
+        }
+        lower_token = token.lower()
+        if lower_token in sector_map:
+            filters["commercial_sector"] = f"eq.{sector_map[lower_token]}"
+            applied.append(f"行业：{sector_map[lower_token]}")
+            continue
+        category_map = {
+            "refrigerator": "refrigerator",
+            "冷藏": "refrigerator",
+            "冷藏柜": "refrigerator",
+            "freezer": "freezer",
+            "冷冻": "freezer",
+            "冷冻柜": "freezer",
+            "dual": "dual_temp",
+            "dual_temp": "dual_temp",
+            "两用": "dual_temp",
+            "冷藏冷冻": "dual_temp",
+            "display": "display_case",
+            "display_case": "display_case",
+            "展示": "display_case",
+            "展示柜": "display_case",
+            "prep_table": "prep_table",
+            "备餐台": "prep_table",
+            "bar_cooler": "bar_cooler",
+            "吧台柜": "bar_cooler",
+            "walk_in": "walk_in",
+            "步入式": "walk_in",
+            "ice": "ice_machine",
+            "制冰": "ice_machine",
+            "制冰机": "ice_machine",
+        }
+        if lower_token in category_map:
+            filters["equipment_category"] = f"eq.{category_map[lower_token]}"
+            applied.append(f"设备：{category_map[lower_token]}")
+            continue
         door_match = re.fullmatch(r"(\d{1,2})门", token)
         if door_match:
             filters["door_count"] = f"eq.{door_match.group(1)}"
@@ -918,7 +977,7 @@ def get_admin_products_page(client: httpx.Client, raw_query: str = "", page_num:
     offset = (page_num - 1) * per_page
     search_text, filters, applied = admin_product_query_parts(raw_query)
     params = {
-        "select": "id,brand,equipment_model,product_type,product_image_url,updated_at,last_enriched_at,last_discovered_at,data_status,data_confidence,door_count,door_layout,door_positions,manufacturer,lifecycle_status",
+        "select": "id,brand,equipment_model,product_type,product_image_url,updated_at,last_enriched_at,last_discovered_at,data_status,data_confidence,door_count,door_layout,door_positions,manufacturer,lifecycle_status,market_category,commercial_sector,equipment_category,equipment_form,temperature_application,classification_confidence,classification_source,classified_at",
         "order": "brand.asc.nullslast,equipment_model.asc.nullslast,id.asc",
         "limit": str(per_page),
         "offset": str(offset),
@@ -1796,6 +1855,9 @@ def count_known_profiles(client: httpx.Client) -> int:
 def get_database_stats(client: httpx.Client) -> dict:
     product_total = supabase_count(client, "refrigerator_products")
     product_images = supabase_count(client, "refrigerator_products", {"product_image_url": "not.is.null"})
+    commercial_products = supabase_count(client, "refrigerator_products", {"market_category": "eq.commercial"})
+    residential_products = supabase_count(client, "refrigerator_products", {"market_category": "eq.residential"})
+    unknown_market_products = supabase_count(client, "refrigerator_products", {"market_category": "eq.unknown"})
     quote_items = supabase_count(client, "refrigerator_product_quote_items", select_field="refrigerator_product_id")
     quote_items_with_size = supabase_count(client, "refrigerator_product_quote_items", {"dimensions_text": "not.is.null"}, "refrigerator_product_id")
     trusted_products = supabase_count(client, "refrigerator_products", {"data_confidence": "gte.100"})
@@ -1808,6 +1870,9 @@ def get_database_stats(client: httpx.Client) -> dict:
         "product_total": product_total,
         "product_images": product_images,
         "product_image_rate": round((product_images / product_total * 100), 1) if product_total else 0,
+        "commercial_products": commercial_products,
+        "residential_products": residential_products,
+        "unknown_market_products": unknown_market_products,
         "quote_items": quote_items,
         "quote_items_with_size": quote_items_with_size,
         "quote_size_rate": round((quote_items_with_size / quote_items * 100), 1) if quote_items else 0,
@@ -2099,6 +2164,11 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
                 product.get("equipment_model"),
                 product.get("product_type"),
                 product.get("door_layout"),
+                product.get("market_category"),
+                product.get("commercial_sector"),
+                product.get("equipment_category"),
+                product.get("equipment_form"),
+                product.get("temperature_application"),
                 product.get("data_status"),
                 missing_text,
                 image_state,
@@ -2113,7 +2183,9 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
             f"""<tr data-product-row data-search="{esc(search_blob)}" data-image="{image_filter_state}" data-missing="{missing_state}" data-door-count="{esc(door_count_value)}" data-completeness="{esc(completeness_value)}" data-confidence="{esc(confidence_value)}">
 <td><a href="/ADMIN?product_id={esc(product_id)}">{esc(product_id)}</a></td>
 <td><strong>{esc(product.get('brand'))}</strong><br>{esc(product.get('equipment_model'))}</td>
+<td>{esc(product.get('market_category'))}<br><span class="muted">{esc(product.get('commercial_sector'))}</span><br><span class="muted">{esc(product.get('classification_confidence'))}%</span></td>
 <td>{esc(product.get('product_type') or '')}<br><span class="muted">{esc(product.get('door_layout') or '')}</span></td>
+<td>{esc(product.get('equipment_category'))}<br><span class="muted">{esc(product.get('equipment_form'))}</span><br><span class="muted">{esc(product.get('temperature_application'))}</span></td>
 <td>{esc(zh_status(product.get('data_status')))}</td>
 <td>{esc(completeness_value)}%</td>
 <td>{esc(confidence_value)}%</td>
@@ -2122,7 +2194,7 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
 <td><span class="muted">产品更新</span><br>{esc(product.get('updated_at') or '')}<br><span class="muted">最后补全</span><br>{esc(product.get('last_enriched_at') or '')}<br><span class="muted">发现时间</span><br>{esc(product.get('last_discovered_at') or '')}</td>
 </tr>"""
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>没有找到匹配的产品型号。</td></tr>"
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='11'>没有找到匹配的产品型号。</td></tr>"
     query_text = products_page.get("query") or ""
     page_num = int(products_page.get("page") or 1)
     per_page = int(products_page.get("per_page") or 50)
@@ -2181,6 +2253,9 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
 <div class="admin-filter-body" style="max-width:none">
 <div class="summary">
 <div class="metric"><span>产品型号</span><strong>{esc(stats.get('product_total'))}</strong></div>
+<div class="metric"><span>商用型号</span><strong>{esc(stats.get('commercial_products'))}</strong></div>
+<div class="metric"><span>家用型号</span><strong>{esc(stats.get('residential_products'))}</strong></div>
+<div class="metric"><span>未分类型号</span><strong>{esc(stats.get('unknown_market_products'))}</strong></div>
 <div class="metric"><span>已有主图</span><strong>{esc(stats.get('product_images'))}</strong><span class="muted">{esc(stats.get('product_image_rate'))}%</span></div>
 <div class="metric"><span>密封条记录</span><strong>{esc(stats.get('quote_items'))}</strong></div>
 <div class="metric"><span>有尺寸记录</span><strong>{esc(stats.get('quote_items_with_size'))}</strong><span class="muted">{esc(stats.get('quote_size_rate'))}%</span></div>
@@ -2247,7 +2322,7 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
 <option value="100" {"selected" if per_page == 100 else ""}>100 条</option>
 </select></div>
 </form>
-<div class="admin-filter-help">支持：品牌/型号关键词、缺图片、有图片、缺资料、资料完整、1门/2门/3门/4门、完整度&lt;80、置信度&gt;70。</div>
+<div class="admin-filter-help">支持：品牌/型号关键词、商用、家用、饭店、商超、医疗、冷藏柜、冷冻柜、两用、展示柜、步入式、缺图片、有图片、1门/2门/3门/4门。</div>
 </div>
 </section>
 {stats_html}
@@ -2276,6 +2351,16 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
 <button type="button" class="admin-filter-chip" data-product-query="有图片">有图片</button>
 <button type="button" class="admin-filter-chip" data-product-query="缺资料">缺资料</button>
 <button type="button" class="admin-filter-chip" data-product-query="资料完整">资料完整</button>
+<button type="button" class="admin-filter-chip" data-product-query="商用">商用</button>
+<button type="button" class="admin-filter-chip" data-product-query="家用">家用</button>
+<button type="button" class="admin-filter-chip" data-product-query="饭店">饭店</button>
+<button type="button" class="admin-filter-chip" data-product-query="商超">商超</button>
+<button type="button" class="admin-filter-chip" data-product-query="医疗">医疗</button>
+<button type="button" class="admin-filter-chip" data-product-query="冷藏柜">冷藏柜</button>
+<button type="button" class="admin-filter-chip" data-product-query="冷冻柜">冷冻柜</button>
+<button type="button" class="admin-filter-chip" data-product-query="两用">两用</button>
+<button type="button" class="admin-filter-chip" data-product-query="展示柜">展示柜</button>
+<button type="button" class="admin-filter-chip" data-product-query="步入式">步入式</button>
 <button type="button" class="admin-filter-chip" data-product-query="1门">1门</button>
 <button type="button" class="admin-filter-chip" data-product-query="2门">2门</button>
 <button type="button" class="admin-filter-chip" data-product-query="3门">3门</button>
@@ -2293,7 +2378,7 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
 </div>
 </details>
 {pagination_html}
-<table class="admin-table"><thead><tr><th>ID</th><th>产品</th><th>类型/结构</th><th>状态</th><th>完整度</th><th>置信度</th><th>图片</th><th>缺少资料</th><th>时间</th></tr></thead><tbody>{rows_html}</tbody></table>
+<table class="admin-table"><thead><tr><th>ID</th><th>产品</th><th>市场/行业</th><th>类型/结构</th><th>设备分类</th><th>状态</th><th>完整度</th><th>置信度</th><th>图片</th><th>缺少资料</th><th>时间</th></tr></thead><tbody>{rows_html}</tbody></table>
 {pagination_html}
 <script>
 (() => {{
