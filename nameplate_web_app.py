@@ -1046,6 +1046,195 @@ def get_admin_products_page(client: httpx.Client, raw_query: str = "", page_num:
     }
 
 
+def admin_nav(active: str = "orders") -> str:
+    items = [
+        ("orders", "订单列表", "/ADMIN"),
+        ("products", "产品数据库", "/ADMIN?view=products"),
+        ("gasket_catalog", "密封条目录", "/ADMIN?view=gasket_catalog"),
+        ("product_gaskets", "门位密封条", "/ADMIN?view=product_gaskets"),
+    ]
+    links = [
+        f"""<a class="button {'active' if key == active else ''}" href="{href}">{label}</a>"""
+        for key, label, href in items
+    ]
+    links.append("""<a class="button logout" href="/ADMIN/logout">退出登录</a>""")
+    return f"""<div class="admin-actions">{''.join(links)}</div>"""
+
+
+def admin_page_bounds(page_num: int, per_page: int) -> tuple[int, int, int]:
+    per_page = max(10, min(100, per_page or 50))
+    page_num = max(1, page_num or 1)
+    offset = (page_num - 1) * per_page
+    return page_num, per_page, offset
+
+
+def admin_pagination_html(base_view: str, query_text: str, page_num: int, per_page: int, total: int, total_pages: int, applied_text: str) -> str:
+    shown_from = (page_num - 1) * per_page + 1 if total else 0
+    shown_to = min(total, page_num * per_page)
+    full_page_capacity = per_page * total_pages if total else 0
+    last_page_count = total - per_page * (total_pages - 1) if total else 0
+
+    def page_url(target_page: int, target_per_page: int | None = None) -> str:
+        params = {
+            "view": base_view,
+            "q": query_text,
+            "page": str(max(1, target_page)),
+            "per_page": str(target_per_page or per_page),
+        }
+        return "/ADMIN?" + urlencode(params)
+
+    prev_link = page_url(page_num - 1) if page_num > 1 else ""
+    next_link = page_url(page_num + 1) if page_num < total_pages else ""
+    if total_pages <= 9:
+        page_numbers = list(range(1, total_pages + 1))
+    else:
+        page_numbers = sorted({1, 2, max(1, page_num - 1), page_num, min(total_pages, page_num + 1), total_pages - 1, total_pages})
+    page_links = []
+    previous_number = 0
+    for number in page_numbers:
+        if previous_number and number - previous_number > 1:
+            page_links.append("<span class='admin-page-gap'>...</span>")
+        if number == page_num:
+            page_links.append(f"<span class='admin-page-link active'>{number}</span>")
+        else:
+            page_links.append(f"<a class='admin-page-link' href='{esc(page_url(number))}'>{number}</a>")
+        previous_number = number
+    return f"""
+<div class="admin-pagination">
+<div class="admin-result-summary">
+<strong>{esc(applied_text)}</strong>：共 <strong>{esc(total)}</strong> 条；每页 <strong>{esc(per_page)}</strong> 条；第 <strong>{esc(page_num)}</strong> / <strong>{esc(total_pages)}</strong> 页；本页显示 <strong>{esc(shown_from)}-{esc(shown_to)}</strong> 条。<span class="muted">分页核对：{esc(per_page)} × {esc(total_pages)} = {esc(full_page_capacity)} 个位置；最后一页实际 {esc(last_page_count)} 条。</span>
+</div>
+<div class="admin-page-controls">
+{f"<a class='admin-page-link' href='{esc(prev_link)}'>上一页</a>" if prev_link else "<span class='admin-page-link disabled'>上一页</span>"}
+{''.join(page_links)}
+{f"<a class='admin-page-link' href='{esc(next_link)}'>下一页</a>" if next_link else "<span class='admin-page-link disabled'>下一页</span>"}
+</div>
+</div>"""
+
+
+def get_admin_gasket_catalog_page(client: httpx.Client, raw_query: str = "", page_num: int = 1, per_page: int = 50) -> dict:
+    page_num, per_page, offset = admin_page_bounds(page_num, per_page)
+    query_text = (raw_query or "").strip()
+    params = {
+        "select": "id,primary_part_number,universal_part_numbers,part_name,gasket_color,install_type,profile_type,profile_name,profile_family,width_in,height_in,perimeter_in,dimensions_text,compatible_brands,compatible_equipment_models,compatible_door_positions,cross_check_score,confidence_score,data_status,is_verified,source_name,source_url,updated_at",
+        "order": "updated_at.desc.nullslast,id.desc",
+        "limit": str(per_page),
+        "offset": str(offset),
+    }
+    if query_text:
+        safe_search = re.sub(r"[^A-Za-z0-9 ._/-]+", " ", query_text).strip()
+        if safe_search:
+            params["or"] = (
+                f"(primary_part_number.ilike.*{safe_search}*,"
+                f"part_name.ilike.*{safe_search}*,"
+                f"profile_type.ilike.*{safe_search}*,"
+                f"profile_name.ilike.*{safe_search}*,"
+                f"profile_family.ilike.*{safe_search}*,"
+                f"gasket_color.ilike.*{safe_search}*,"
+                f"install_type.ilike.*{safe_search}*,"
+                f"dimensions_text.ilike.*{safe_search}*)"
+            )
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/gasket_catalog",
+        params=params,
+        headers=supabase_headers("count=exact"),
+    )
+    response.raise_for_status()
+    total = parse_content_range_total(response.headers.get("content-range"))
+    total_pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    return {
+        "rows": response.json(),
+        "total": total,
+        "page": page_num,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "query": query_text,
+        "applied": [f"关键词：{query_text}"] if query_text else ["全部密封条目录"],
+    }
+
+
+def get_admin_product_gaskets_page(client: httpx.Client, raw_query: str = "", page_num: int = 1, per_page: int = 50) -> dict:
+    page_num, per_page, offset = admin_page_bounds(page_num, per_page)
+    query_text = (raw_query or "").strip()
+    params = {
+        "select": "*,refrigerator_products(id,brand,equipment_model,product_type,door_count,door_layout),gasket_catalog(id,primary_part_number,profile_name,profile_type,color,gasket_color)",
+        "order": "updated_at.desc.nullslast,id.desc",
+        "limit": str(per_page),
+        "offset": str(offset),
+    }
+    if query_text:
+        safe_search = re.sub(r"[^A-Za-z0-9 ._/-]+", " ", query_text).strip()
+        if safe_search:
+            params["or"] = (
+                f"(door_position.ilike.*{safe_search}*,"
+                f"door_position_display.ilike.*{safe_search}*,"
+                f"part_number.ilike.*{safe_search}*,"
+                f"universal_part_number.ilike.*{safe_search}*,"
+                f"gasket_name.ilike.*{safe_search}*,"
+                f"gasket_profile.ilike.*{safe_search}*,"
+                f"gasket_color.ilike.*{safe_search}*,"
+                f"dimensions_text.ilike.*{safe_search}*)"
+            )
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/refrigerator_product_gaskets",
+        params=params,
+        headers=supabase_headers("count=exact"),
+    )
+    response.raise_for_status()
+    total = parse_content_range_total(response.headers.get("content-range"))
+    total_pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    return {
+        "rows": response.json(),
+        "total": total,
+        "page": page_num,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "query": query_text,
+        "applied": [f"关键词：{query_text}"] if query_text else ["全部门位密封条"],
+    }
+
+
+def get_gasket_catalog_record(client: httpx.Client, catalog_id: int) -> dict | None:
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/gasket_catalog",
+        params={"select": "*", "id": f"eq.{catalog_id}", "limit": "1"},
+        headers=supabase_headers(),
+    )
+    response.raise_for_status()
+    rows = response.json()
+    return rows[0] if rows else None
+
+
+def get_product_gasket_record(client: httpx.Client, record_id: int) -> dict | None:
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/refrigerator_product_gaskets",
+        params={
+            "select": "*,refrigerator_products(*),gasket_catalog(*)",
+            "id": f"eq.{record_id}",
+            "limit": "1",
+        },
+        headers=supabase_headers(),
+    )
+    response.raise_for_status()
+    rows = response.json()
+    return rows[0] if rows else None
+
+
+def get_catalog_applications(client: httpx.Client, catalog_id: int, limit: int = 50) -> list[dict]:
+    response = client.get(
+        f"{SUPABASE_URL}/rest/v1/refrigerator_product_gaskets",
+        params={
+            "select": "id,door_position,door_position_display,part_number,dimensions_text,confidence_score,fit_status,refrigerator_products(id,brand,equipment_model)",
+            "gasket_catalog_id": f"eq.{catalog_id}",
+            "order": "confidence_score.desc.nullslast,id.desc",
+            "limit": str(limit),
+        },
+        headers=supabase_headers(),
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def save_inferred_door_layout(client: httpx.Client, product: dict, positions: list[dict]) -> None:
     if not positions:
         return
@@ -2009,7 +2198,7 @@ def render_admin_orders_dashboard(orders: list[dict]) -> bytes:
 </style>
 <section><h2>后台订单</h2>
 <p class="muted">工作人员查看客户订单、生产资料和后续联系记录。</p>
-<div class="admin-actions"><a class="button active" href="/ADMIN">订单列表</a><a class="button" href="/ADMIN?view=products">产品数据库</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
+{admin_nav('orders')}
 <details class="admin-filter">
 <summary>筛选订单</summary>
 <div class="admin-filter-body">
@@ -2162,9 +2351,10 @@ pre{{white-space:pre-wrap;max-height:240px;overflow:auto;background:#f8fafc;bord
 .admin-table{{width:100%;border-collapse:collapse;background:white}}
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
 .admin-table th{{background:#f8fafc;color:#687385}}
-.admin-actions{{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}}
+.admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
+.admin-actions .logout{{margin-left:auto}}
 </style>
-<section><div class="admin-actions"><a class="button" href="/ADMIN">返回订单列表</a>{f' <a class="button" href="/ADMIN?product_id={esc(product_id)}">产品数据库记录</a> <a class="button" href="/preview?product_id={esc(product_id)}">客户预览页</a>' if product_id else ''}<a class="button" href="{esc(order.get('checkout_url'))}" target="_blank" rel="noopener">Shopify付款链接</a><a class="button" href="/ADMIN/logout">退出登录</a></div>
+<section><div class="admin-actions"><a class="button" href="/ADMIN">返回订单列表</a><a class="button" href="/ADMIN?view=products">产品数据库</a><a class="button" href="/ADMIN?view=gasket_catalog">密封条目录</a><a class="button" href="/ADMIN?view=product_gaskets">门位密封条</a>{f' <a class="button" href="/ADMIN?product_id={esc(product_id)}">产品数据库记录</a> <a class="button" href="/preview?product_id={esc(product_id)}">客户预览页</a>' if product_id else ''}<a class="button" href="{esc(order.get('checkout_url'))}" target="_blank" rel="noopener">Shopify付款链接</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
 <h2>订单 #{esc(order.get('id'))}</h2>
 <div class="summary"><div class="metric"><span>付款状态</span><strong>{esc(zh_status(order.get('payment_status')))}</strong></div><div class="metric"><span>生产状态</span><strong>{esc(zh_status(order.get('fulfillment_status')))}</strong></div><div class="metric"><span>金额</span><strong>{money(order.get('subtotal_usd'))}</strong></div></div>
 </section>
@@ -2343,7 +2533,7 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
 </style>
 <section><h2>后台产品数据库</h2>
 <p class="muted">内部查看产品资料证据、字段完整度、置信度和补全时间。</p>
-<div class="admin-actions"><a class="button" href="/ADMIN">订单列表</a><a class="button active" href="/ADMIN?view=products">产品数据库</a><a class="button logout" href="/ADMIN/logout">退出登录</a></div>
+{admin_nav('products')}
 <div class="admin-filter-body" style="max-width:none;margin-bottom:12px">
 <form method="get" action="/ADMIN">
 <input type="hidden" name="view" value="products">
@@ -2542,6 +2732,238 @@ def render_admin_dashboard(products_page: dict, stats: dict | None = None) -> by
 </section>""")
 
 
+def render_admin_gasket_catalog(catalog_page: dict) -> bytes:
+    rows = []
+    for item in catalog_page.get("rows") or []:
+        brands = ", ".join((item.get("compatible_brands") or [])[:4])
+        models = ", ".join((item.get("compatible_equipment_models") or [])[:4])
+        positions = ", ".join((item.get("compatible_door_positions") or [])[:4])
+        part_aliases = ", ".join(item.get("universal_part_numbers") or [])
+        dimensions = item.get("dimensions_text") or ""
+        if not dimensions and item.get("width_in") and item.get("height_in"):
+            dimensions = f'{item.get("width_in")}" x {item.get("height_in")}"'
+        rows.append(
+            f"""<tr>
+<td><a href="/ADMIN?gasket_catalog_id={esc(item.get('id'))}">#{esc(item.get('id'))}</a></td>
+<td><strong>{esc(item.get('primary_part_number'))}</strong><br><span class="muted">{esc(part_aliases)}</span></td>
+<td>{esc(item.get('part_name'))}<br><span class="muted">{esc(item.get('profile_name') or item.get('profile_type') or item.get('profile_family'))}</span></td>
+<td>{esc(dimensions)}<br><span class="muted">{esc(item.get('gasket_color') or item.get('color'))}</span></td>
+<td>{esc(item.get('install_type'))}<br><span class="muted">{esc(positions)}</span></td>
+<td>{esc(brands)}<br><span class="muted">{esc(models)}</span></td>
+<td>{esc(item.get('cross_check_score') or item.get('confidence_score'))}%<br><span class="muted">{esc(zh_status(item.get('data_status')))}</span></td>
+<td>{esc(item.get('source_name'))}<br><span class="muted">{esc(short_datetime(item.get('updated_at')))}</span></td>
+</tr>"""
+        )
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='8'>没有找到密封条目录记录。</td></tr>"
+    query_text = catalog_page.get("query") or ""
+    page_num = int(catalog_page.get("page") or 1)
+    per_page = int(catalog_page.get("per_page") or 50)
+    total = int(catalog_page.get("total") or 0)
+    total_pages = int(catalog_page.get("total_pages") or 1)
+    applied_text = "；".join(catalog_page.get("applied") or []) or "全部密封条目录"
+    pagination_html = admin_pagination_html("gasket_catalog", query_text, page_num, per_page, total, total_pages, applied_text)
+    return page("后台密封条目录", f"""
+<style>
+.admin-table{{width:100%;border-collapse:collapse;background:white}}
+.admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
+.admin-table th{{background:#f8fafc;color:#687385}}
+.admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
+.admin-actions .logout{{margin-left:auto}}
+.admin-actions .active{{background:#0d1f2a}}
+.admin-filter-body{{border:1px solid #dbe2ea;border-radius:8px;background:#fff;padding:14px;display:grid;gap:8px;max-width:none;margin-bottom:12px}}
+.admin-filter-body label{{font-size:13px;color:#687385}}
+.admin-search-line{{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}}
+.admin-search-line input{{width:100%;box-sizing:border-box;border:1px solid #ccd6e2;border-radius:8px;padding:11px 12px;font-size:15px}}
+.admin-search-button{{border:0;background:#0a6f78;color:#fff;border-radius:8px;min-height:42px;padding:0 18px;font-weight:700;cursor:pointer}}
+.admin-page-size{{display:flex;gap:8px;align-items:center;flex-wrap:wrap}}
+.admin-page-size select{{border:1px solid #ccd6e2;border-radius:8px;padding:10px 12px;background:white}}
+.admin-filter-help{{font-size:13px;color:#687385;line-height:1.55}}
+.admin-pagination{{display:grid;gap:10px;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:12px 14px;margin:0 0 12px}}
+.admin-result-summary{{font-size:14px;color:#334155;line-height:1.5}}
+.admin-page-controls{{display:flex;gap:7px;align-items:center;flex-wrap:wrap}}
+.admin-page-link{{border:1px solid #ccd6e2;background:#f8fafc;color:#0d1f2a;border-radius:7px;padding:7px 10px;text-decoration:none;font-size:13px}}
+.admin-page-link.active{{background:#0a6f78;color:#fff;border-color:#0a6f78;font-weight:800}}
+.admin-page-link.disabled{{opacity:.45}}
+.admin-page-gap{{color:#687385;padding:0 2px}}
+</style>
+<section><h2>后台密封条目录</h2>
+<p class="muted">管理标准密封条本体：配件号、替代号、横截面、安装方式、尺寸和可适配范围。</p>
+{admin_nav('gasket_catalog')}
+<div class="admin-filter-body">
+<form method="get" action="/ADMIN">
+<input type="hidden" name="view" value="gasket_catalog">
+<input type="hidden" name="page" value="1">
+<label for="admin-gasket-catalog-search">搜索密封条目录</label>
+<div class="admin-search-line"><input id="admin-gasket-catalog-search" name="q" type="search" value="{esc(query_text)}" placeholder="输入配件号、横截面、颜色、安装方式或尺寸"><button class="admin-search-button" type="submit">搜索</button></div>
+<div class="admin-page-size"><span class="admin-filter-help">每页显示</span><select name="per_page" onchange="this.form.submit()">
+<option value="25" {"selected" if per_page == 25 else ""}>25 条</option>
+<option value="50" {"selected" if per_page == 50 else ""}>50 条</option>
+<option value="100" {"selected" if per_page == 100 else ""}>100 条</option>
+</select></div>
+</form>
+<div class="admin-filter-help">这里是一条密封条本体一行。多个冰箱型号、多个门位可以共同指向同一条目录记录。</div>
+</div>
+{pagination_html}
+<table class="admin-table"><thead><tr><th>ID</th><th>配件号/替代号</th><th>名称/横截面</th><th>尺寸/颜色</th><th>安装/门位</th><th>适配品牌型号</th><th>评分</th><th>来源/时间</th></tr></thead><tbody>{rows_html}</tbody></table>
+{pagination_html}
+</section>""")
+
+
+def render_admin_product_gaskets(gaskets_page: dict) -> bytes:
+    rows = []
+    for item in gaskets_page.get("rows") or []:
+        product = item.get("refrigerator_products") or {}
+        catalog = item.get("gasket_catalog") or {}
+        dimensions = item.get("dimensions_text") or ""
+        if not dimensions and item.get("width_in") and item.get("height_in"):
+            dimensions = f'{item.get("width_in")}" x {item.get("height_in")}"'
+        rows.append(
+            f"""<tr>
+<td><a href="/ADMIN?product_gasket_id={esc(item.get('id'))}">#{esc(item.get('id'))}</a></td>
+<td><a href="/ADMIN?product_id={esc(product.get('id') or item.get('refrigerator_product_id'))}"><strong>{esc(product.get('brand'))}</strong><br>{esc(product.get('equipment_model'))}</a></td>
+<td>{esc(item.get('door_position_display') or item.get('door_position'))}<br><span class="muted">门序 {esc(item.get('door_index'))}</span></td>
+<td>{esc(item.get('part_number') or item.get('universal_part_number'))}<br><span class="muted">{esc(item.get('gasket_name'))}</span></td>
+<td>{esc(dimensions)}<br><span class="muted">{esc(item.get('gasket_color'))}</span></td>
+<td>{esc(item.get('gasket_install_type'))}<br><span class="muted">{esc(item.get('gasket_profile') or catalog.get('profile_name') or catalog.get('profile_type'))}</span></td>
+<td>{f'<a href="/ADMIN?gasket_catalog_id={esc(catalog.get("id"))}">目录 #{esc(catalog.get("id"))}</a>' if catalog.get('id') else '<span class="muted">未关联目录</span>'}</td>
+<td>{esc(item.get('confidence_score'))}%<br><span class="muted">{esc(zh_status(item.get('data_status') or item.get('fit_status')))}</span></td>
+<td>{money(item.get('final_price_usd'))}<br><span class="muted">{esc(short_datetime(item.get('updated_at')))}</span></td>
+</tr>"""
+        )
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='9'>没有找到门位密封条记录。</td></tr>"
+    query_text = gaskets_page.get("query") or ""
+    page_num = int(gaskets_page.get("page") or 1)
+    per_page = int(gaskets_page.get("per_page") or 50)
+    total = int(gaskets_page.get("total") or 0)
+    total_pages = int(gaskets_page.get("total_pages") or 1)
+    applied_text = "；".join(gaskets_page.get("applied") or []) or "全部门位密封条"
+    pagination_html = admin_pagination_html("product_gaskets", query_text, page_num, per_page, total, total_pages, applied_text)
+    return page("后台门位密封条", f"""
+<style>
+.admin-table{{width:100%;border-collapse:collapse;background:white}}
+.admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
+.admin-table th{{background:#f8fafc;color:#687385}}
+.admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
+.admin-actions .logout{{margin-left:auto}}
+.admin-actions .active{{background:#0d1f2a}}
+.admin-filter-body{{border:1px solid #dbe2ea;border-radius:8px;background:#fff;padding:14px;display:grid;gap:8px;max-width:none;margin-bottom:12px}}
+.admin-filter-body label{{font-size:13px;color:#687385}}
+.admin-search-line{{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}}
+.admin-search-line input{{width:100%;box-sizing:border-box;border:1px solid #ccd6e2;border-radius:8px;padding:11px 12px;font-size:15px}}
+.admin-search-button{{border:0;background:#0a6f78;color:#fff;border-radius:8px;min-height:42px;padding:0 18px;font-weight:700;cursor:pointer}}
+.admin-page-size{{display:flex;gap:8px;align-items:center;flex-wrap:wrap}}
+.admin-page-size select{{border:1px solid #ccd6e2;border-radius:8px;padding:10px 12px;background:white}}
+.admin-filter-help{{font-size:13px;color:#687385;line-height:1.55}}
+.admin-pagination{{display:grid;gap:10px;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:12px 14px;margin:0 0 12px}}
+.admin-result-summary{{font-size:14px;color:#334155;line-height:1.5}}
+.admin-page-controls{{display:flex;gap:7px;align-items:center;flex-wrap:wrap}}
+.admin-page-link{{border:1px solid #ccd6e2;background:#f8fafc;color:#0d1f2a;border-radius:7px;padding:7px 10px;text-decoration:none;font-size:13px}}
+.admin-page-link.active{{background:#0a6f78;color:#fff;border-color:#0a6f78;font-weight:800}}
+.admin-page-link.disabled{{opacity:.45}}
+.admin-page-gap{{color:#687385;padding:0 2px}}
+</style>
+<section><h2>后台门位密封条</h2>
+<p class="muted">管理“某个冰箱型号的某个门位”使用哪一条密封条。这里是产品型号和标准密封条目录之间的关联表。</p>
+{admin_nav('product_gaskets')}
+<div class="admin-filter-body">
+<form method="get" action="/ADMIN">
+<input type="hidden" name="view" value="product_gaskets">
+<input type="hidden" name="page" value="1">
+<label for="admin-product-gasket-search">搜索门位密封条</label>
+<div class="admin-search-line"><input id="admin-product-gasket-search" name="q" type="search" value="{esc(query_text)}" placeholder="输入门位、配件号、尺寸、颜色或横截面"><button class="admin-search-button" type="submit">搜索</button></div>
+<div class="admin-page-size"><span class="admin-filter-help">每页显示</span><select name="per_page" onchange="this.form.submit()">
+<option value="25" {"selected" if per_page == 25 else ""}>25 条</option>
+<option value="50" {"selected" if per_page == 50 else ""}>50 条</option>
+<option value="100" {"selected" if per_page == 100 else ""}>100 条</option>
+</select></div>
+</form>
+<div class="admin-filter-help">这里是一门一行。三门冰箱应该显示三条：左门、右门、冷冻抽屉。</div>
+</div>
+{pagination_html}
+<table class="admin-table"><thead><tr><th>ID</th><th>产品型号</th><th>门位</th><th>配件号</th><th>尺寸/颜色</th><th>安装/截面</th><th>目录关联</th><th>状态</th><th>价格/时间</th></tr></thead><tbody>{rows_html}</tbody></table>
+{pagination_html}
+</section>""")
+
+
+def render_admin_gasket_catalog_detail(item: dict, applications: list[dict]) -> bytes:
+    fields = [
+        ("主配件号", item.get("primary_part_number")),
+        ("标准编码", item.get("gasket_code")),
+        ("名称", item.get("part_name")),
+        ("横截面族", item.get("profile_family")),
+        ("横截面名称", item.get("profile_name") or item.get("profile_type")),
+        ("安装方式", item.get("mounting_method") or item.get("install_type")),
+        ("颜色", item.get("color") or item.get("gasket_color")),
+        ("尺寸", item.get("dimensions_text")),
+        ("宽", item.get("width_in")),
+        ("高", item.get("height_in")),
+        ("周长", item.get("perimeter_in")),
+        ("交叉印证分", item.get("cross_check_score")),
+        ("置信度", item.get("confidence_score")),
+        ("状态", zh_status(item.get("data_status"))),
+        ("来源", item.get("source_name")),
+        ("来源链接", item.get("source_url")),
+    ]
+    field_rows = "".join([f"<div>{esc(label)}</div><div><strong>{esc(value)}</strong></div>" for label, value in fields])
+    app_rows = []
+    for row in applications:
+        product = row.get("refrigerator_products") or {}
+        app_rows.append(
+            f"""<tr><td><a href="/ADMIN?product_gasket_id={esc(row.get('id'))}">#{esc(row.get('id'))}</a></td><td><a href="/ADMIN?product_id={esc(product.get('id'))}">{esc(product.get('brand'))} {esc(product.get('equipment_model'))}</a></td><td>{esc(row.get('door_position_display') or row.get('door_position'))}</td><td>{esc(row.get('part_number'))}</td><td>{esc(row.get('dimensions_text'))}</td><td>{esc(row.get('confidence_score'))}%</td></tr>"""
+        )
+    app_rows_html = "".join(app_rows) if app_rows else "<tr><td colspan='6'>暂无产品门位关联。</td></tr>"
+    return page("密封条目录详情", f"""
+<style>
+pre{{white-space:pre-wrap;max-height:260px;overflow:auto;background:#f8fafc;border:1px solid #dbe2ea;border-radius:6px;padding:8px}}
+.admin-table{{width:100%;border-collapse:collapse;background:white}}
+.admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
+.admin-table th{{background:#f8fafc;color:#687385}}
+.admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
+.admin-actions .logout{{margin-left:auto}}
+</style>
+<section>{admin_nav('gasket_catalog')}<h2>密封条目录 #{esc(item.get('id'))}</h2><div class="facts">{field_rows}</div></section>
+<section><h2>适配产品门位</h2><table class="admin-table"><thead><tr><th>关联ID</th><th>产品型号</th><th>门位</th><th>配件号</th><th>尺寸</th><th>置信度</th></tr></thead><tbody>{app_rows_html}</tbody></table></section>
+<section><h2>完整原始记录</h2><pre>{esc(compact_json(item))}</pre></section>""")
+
+
+def render_admin_product_gasket_detail(item: dict) -> bytes:
+    product = item.get("refrigerator_products") or {}
+    catalog = item.get("gasket_catalog") or {}
+    fields = [
+        ("产品", f"{product.get('brand') or ''} {product.get('equipment_model') or ''}".strip()),
+        ("产品ID", item.get("refrigerator_product_id")),
+        ("门位", item.get("door_position_display") or item.get("door_position")),
+        ("门序", item.get("door_index")),
+        ("配件号", item.get("part_number")),
+        ("通用配件号", item.get("universal_part_number")),
+        ("目录ID", item.get("gasket_catalog_id")),
+        ("尺寸", item.get("dimensions_text")),
+        ("宽", item.get("width_in")),
+        ("高", item.get("height_in")),
+        ("周长", item.get("perimeter_in")),
+        ("颜色", item.get("gasket_color")),
+        ("安装方式", item.get("gasket_install_type")),
+        ("横截面", item.get("gasket_profile")),
+        ("置信度", item.get("confidence_score")),
+        ("价格", money(item.get("final_price_usd"))),
+        ("状态", zh_status(item.get("data_status") or item.get("fit_status"))),
+        ("来源", item.get("source_name")),
+        ("来源链接", item.get("source_url")),
+    ]
+    field_rows = "".join([f"<div>{esc(label)}</div><div><strong>{esc(value)}</strong></div>" for label, value in fields])
+    return page("门位密封条详情", f"""
+<style>
+pre{{white-space:pre-wrap;max-height:260px;overflow:auto;background:#f8fafc;border:1px solid #dbe2ea;border-radius:6px;padding:8px}}
+.admin-actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}}
+.admin-actions .logout{{margin-left:auto}}
+</style>
+<section>{admin_nav('product_gaskets')}<h2>门位密封条 #{esc(item.get('id'))}</h2><div class="facts">{field_rows}</div>
+<p><a class="button" href="/ADMIN?product_id={esc(item.get('refrigerator_product_id'))}">查看产品</a> {f'<a class="button" href="/ADMIN?gasket_catalog_id={esc(item.get("gasket_catalog_id"))}">查看标准密封条目录</a>' if item.get('gasket_catalog_id') else ''}</p></section>
+<section><h2>关联产品快照</h2><pre>{esc(compact_json(product))}</pre></section>
+<section><h2>关联目录快照</h2><pre>{esc(compact_json(catalog))}</pre></section>
+<section><h2>完整原始记录</h2><pre>{esc(compact_json(item))}</pre></section>""")
+
+
 def render_admin_login(message: str = "") -> bytes:
     warning = f"<p style='color:#9f4b12'>{esc(message)}</p>" if message else ""
     config_note = "" if ADMIN_PASSWORD else "<p style='color:#9f4b12'>后台密码尚未配置。</p>"
@@ -2600,7 +3022,7 @@ pre{{white-space:pre-wrap;max-height:180px;overflow:auto;background:#f8fafc;bord
 .admin-table th,.admin-table td{{border:1px solid #dbe2ea;padding:10px;text-align:left;vertical-align:top;font-size:13px}}
 .admin-table th{{background:#f8fafc;color:#687385}}
 </style>
-<section><p><a class="button" href="/ADMIN?view=products">返回产品数据库</a> <a class="button" href="/preview?product_id={esc(product.get('id'))}">客户预览页</a> <a class="button" href="/ADMIN/logout">退出登录</a></p>
+<section>{admin_nav('products')}<p><a class="button" href="/ADMIN?view=products">返回产品数据库</a> <a class="button" href="/preview?product_id={esc(product.get('id'))}">客户预览页</a></p>
 <h2>{esc(product.get('brand'))} {esc(product.get('equipment_model'))}</h2><div class="result-grid"><div>{image_html}</div><div class="facts">{field_rows}</div></div></section>
 {package_html}
 <section><h2>证据明细</h2><table class="admin-table"><thead><tr><th>字段</th><th>类型</th><th>来源</th><th>支持的值</th><th>置信度</th><th>JSON</th></tr></thead><tbody>{item_rows_html}</tbody></table></section>
@@ -2662,6 +3084,8 @@ class Handler(BaseHTTPRequestHandler):
             query = parse_qs(parsed.query)
             order_id = int(query.get("order_id", ["0"])[0] or "0")
             product_id = int(query.get("product_id", ["0"])[0] or "0")
+            gasket_catalog_id = int(query.get("gasket_catalog_id", ["0"])[0] or "0")
+            product_gasket_id = int(query.get("product_gasket_id", ["0"])[0] or "0")
             view = (query.get("view", ["orders"])[0] or "orders").lower()
             with httpx.Client(timeout=30) as client:
                 if order_id:
@@ -2697,6 +3121,20 @@ class Handler(BaseHTTPRequestHandler):
                         )
                     )
                     return
+                if gasket_catalog_id:
+                    catalog_record = get_gasket_catalog_record(client, gasket_catalog_id)
+                    if not catalog_record:
+                        self.send_html(page("密封条目录不存在", "<section><h2>密封条目录不存在</h2><p><a class='button' href='/ADMIN?view=gasket_catalog'>返回密封条目录</a></p></section>"), HTTPStatus.NOT_FOUND)
+                        return
+                    self.send_html(render_admin_gasket_catalog_detail(catalog_record, get_catalog_applications(client, gasket_catalog_id)))
+                    return
+                if product_gasket_id:
+                    gasket_record = get_product_gasket_record(client, product_gasket_id)
+                    if not gasket_record:
+                        self.send_html(page("门位密封条不存在", "<section><h2>门位密封条不存在</h2><p><a class='button' href='/ADMIN?view=product_gaskets'>返回门位密封条</a></p></section>"), HTTPStatus.NOT_FOUND)
+                        return
+                    self.send_html(render_admin_product_gasket_detail(gasket_record))
+                    return
                 if view == "products":
                     raw_product_query = (query.get("q") or [""])[0].strip()
                     try:
@@ -2713,6 +3151,30 @@ class Handler(BaseHTTPRequestHandler):
                             get_database_stats(client),
                         )
                     )
+                    return
+                if view == "gasket_catalog":
+                    raw_gasket_query = (query.get("q") or [""])[0].strip()
+                    try:
+                        gasket_page = int((query.get("page") or ["1"])[0] or "1")
+                    except ValueError:
+                        gasket_page = 1
+                    try:
+                        gasket_per_page = int((query.get("per_page") or ["50"])[0] or "50")
+                    except ValueError:
+                        gasket_per_page = 50
+                    self.send_html(render_admin_gasket_catalog(get_admin_gasket_catalog_page(client, raw_gasket_query, gasket_page, gasket_per_page)))
+                    return
+                if view == "product_gaskets":
+                    raw_gasket_query = (query.get("q") or [""])[0].strip()
+                    try:
+                        gasket_page = int((query.get("page") or ["1"])[0] or "1")
+                    except ValueError:
+                        gasket_page = 1
+                    try:
+                        gasket_per_page = int((query.get("per_page") or ["50"])[0] or "50")
+                    except ValueError:
+                        gasket_per_page = 50
+                    self.send_html(render_admin_product_gaskets(get_admin_product_gaskets_page(client, raw_gasket_query, gasket_page, gasket_per_page)))
                     return
                 self.send_html(render_admin_orders_dashboard(get_recent_customer_orders(client)))
             return
