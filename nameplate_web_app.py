@@ -1663,8 +1663,8 @@ def parse_content_range_total(value: str | None) -> int:
     return int(match.group(1))
 
 
-def supabase_count(client: httpx.Client, table: str, filters: dict[str, str] | None = None) -> int:
-    params = {"select": "id", "limit": "1"}
+def supabase_count(client: httpx.Client, table: str, filters: dict[str, str] | None = None, select_field: str = "*") -> int:
+    params = {"select": select_field, "limit": "1"}
     if filters:
         params.update(filters)
     try:
@@ -1720,10 +1720,10 @@ def count_known_profiles(client: httpx.Client) -> int:
 def get_database_stats(client: httpx.Client) -> dict:
     product_total = supabase_count(client, "refrigerator_products")
     product_images = supabase_count(client, "refrigerator_products", {"product_image_url": "not.is.null"})
-    quote_items = supabase_count(client, "refrigerator_product_quote_items")
-    quote_items_with_size = supabase_count(client, "refrigerator_product_quote_items", {"dimensions_text": "not.is.null"})
+    quote_items = supabase_count(client, "refrigerator_product_quote_items", select_field="refrigerator_product_id")
+    quote_items_with_size = supabase_count(client, "refrigerator_product_quote_items", {"dimensions_text": "not.is.null"}, "refrigerator_product_id")
     trusted_products = supabase_count(client, "refrigerator_products", {"data_confidence": "gte.100"})
-    trusted_gaskets = supabase_count(client, "refrigerator_product_quote_items", {"confidence_score": "gte.100"})
+    trusted_gaskets = supabase_count(client, "refrigerator_product_quote_items", {"confidence_score": "gte.100"}, "refrigerator_product_id")
     customer_orders = supabase_count(client, "customer_orders")
     gasket_parts = supabase_count(client, "gasket_catalog")
     recent_searches = get_recent_searches(client)
