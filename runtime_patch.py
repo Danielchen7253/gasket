@@ -287,11 +287,18 @@ main{max-width:none;padding:0}
                         quick_fill_gasket_item_image(image_client, product, item, limit=6)
                     donor = next((item for item in quote_items if item.get("gasket_image_url") and "profile_images" not in str(item.get("gasket_image_url")).lower()), None)
                     if donor:
-                        donor_key = (donor.get("part_number") or donor.get("universal_part_number") or donor.get("dimensions_text") or f"{donor.get('width_in')}x{donor.get('height_in')}")
+                        def image_match_key(row):
+                            if row.get("part_number") or row.get("universal_part_number"):
+                                return row.get("part_number") or row.get("universal_part_number")
+                            if row.get("width_in") not in (None, "") and row.get("height_in") not in (None, ""):
+                                return f"{float(row.get('width_in')):g}x{float(row.get('height_in')):g}"
+                            return row.get("dimensions_text") or ""
+
+                        donor_key = image_match_key(donor)
                         for item in quote_items:
                             if item.get("gasket_image_url"):
                                 continue
-                            item_key = (item.get("part_number") or item.get("universal_part_number") or item.get("dimensions_text") or f"{item.get('width_in')}x{item.get('height_in')}")
+                            item_key = image_match_key(item)
                             if item_key != donor_key:
                                 continue
                             image_client.patch(
