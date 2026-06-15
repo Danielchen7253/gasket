@@ -1,6 +1,6 @@
 # Gasket Match Center
 
-Internal gasket matching web app and crawler tools.
+Internal gasket matching web app and data-maintenance tools.
 
 ## Render web service
 
@@ -33,7 +33,9 @@ Required environment variables:
 
 ## Render data pipeline
 
-Use one Cron Job from this same repo instead of three independent jobs.
+The data pipeline is a light maintenance job. Customer-triggered lookups handle
+product and gasket images first, so batch jobs should not spend paid API budget
+filling images in bulk.
 
 ```bash
 python data_pipeline_worker.py
@@ -48,6 +50,6 @@ Recommended schedule while building data fast:
 The pipeline runs in this order:
 
 1. Discover new refrigerator brands and models.
-2. Immediately backfill missing product images.
-3. Create missing gasket-spec placeholders for new products.
-4. Immediately backfill gasket data.
+2. Create or refresh missing gasket-spec placeholders for new products.
+3. Refresh customer quote records from current product and gasket data.
+4. Leave product and gasket images to the customer lookup flow.
