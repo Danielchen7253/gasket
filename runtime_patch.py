@@ -287,19 +287,22 @@ main{max-width:none;padding:0}
                         quick_fill_gasket_item_image(image_client, product, item, limit=6)
                     donor = next((item for item in quote_items if item.get("gasket_image_url") and "profile_images" not in str(item.get("gasket_image_url")).lower()), None)
                     if donor:
-                        def image_match_key(row):
+                        def image_match_keys(row):
+                            keys = set()
                             if row.get("part_number") or row.get("universal_part_number"):
-                                return row.get("part_number") or row.get("universal_part_number")
+                                keys.add(str(row.get("part_number") or row.get("universal_part_number")))
                             if row.get("width_in") not in (None, "") and row.get("height_in") not in (None, ""):
-                                return f"{float(row.get('width_in')):g}x{float(row.get('height_in')):g}"
-                            return row.get("dimensions_text") or ""
+                                keys.add(f"{float(row.get('width_in')):g}x{float(row.get('height_in')):g}")
+                            if row.get("dimensions_text"):
+                                keys.add(str(row.get("dimensions_text")))
+                            return keys
 
-                        donor_key = image_match_key(donor)
+                        donor_keys = image_match_keys(donor)
                         for item in quote_items:
                             if item.get("gasket_image_url"):
                                 continue
-                            item_key = image_match_key(item)
-                            if item_key != donor_key:
+                            item_keys = image_match_keys(item)
+                            if not donor_keys.intersection(item_keys):
                                 continue
                             image_client.patch(
                                 f"{g['SUPABASE_URL']}/rest/v1/refrigerator_product_gaskets",
