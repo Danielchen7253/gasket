@@ -279,8 +279,8 @@ main{max-width:none;padding:0}
             door_label = item.get("door_position_display") or "Door position loading"
             door_key = item.get("door_position") or f"door_{index}"
             price = float(item.get("final_price_usd") or 0)
-            image = item.get("gasket_image_url")
-            image_html = f"<img src='{esc(image)}' alt='Gasket image'>" if image else "<span>Gasket</span>"
+            image = item.get("gasket_image_url") or "/static/gasket_product_placeholder.svg"
+            image_html = f"<img src='{esc(image)}' alt='Gasket product image'>"
             dims = gasket_size(item)
             rows.append(f"""<label class="gasket-option"><input type="checkbox" name="door_position" value="{esc(door_key)}" data-price="{price}" checked><div class="gasket-thumb">{image_html}</div><div class="gasket-copy"><strong>{esc(door_label)}</strong><p>{esc(dims)}</p></div><div class="price"><strong>{g['money'](price)}</strong><small>each selected door</small></div></label>""")
 
