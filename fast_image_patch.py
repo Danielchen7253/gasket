@@ -7,6 +7,7 @@ from html import unescape
 from bs4 import BeautifulSoup
 
 from product_image_search_crawler import (
+    BRAVE_SEARCH_API_KEY,
     CANDIDATE_TABLE,
     MIN_PROMOTE_SCORE,
     SUPABASE_URL,
@@ -24,6 +25,140 @@ from product_image_search_crawler import (
     search_public_web_images,
     supabase_headers,
 )
+
+
+GASKET_IMAGE_MIN_SCORE = 56
+
+
+def gasket_image_query_terms(product: dict, item: dict) -> list[str]:
+    brand = (product.get("brand") or "").strip()
+    model = (product.get("equipment_model") or "").strip()
+    door = (item.get("door_position_display") or item.get("door_position") or "").strip()
+    part = (item.get("part_number") or item.get("universal_part_number") or "").strip()
+    gasket_name = (item.get("gasket_name") or "").strip()
+    queries = []
+    if part:
+        queries.extend(
+            [
+                f"{part} door gasket",
+                f"{part} refrigerator gasket",
+                f"{part} gasket product image",
+            ]
+        )
+    if brand and model:
+        queries.append(f"{brand} {model} {door} door gasket")
+        queries.append(f"{brand} {model} refrigerator door gasket")
+    if gasket_name:
+        queries.append(f"{gasket_name} gasket")
+    seen = set()
+    clean = []
+    for query in queries:
+        key = " ".join(query.split()).lower()
+        if key and key not in seen:
+            seen.add(key)
+            clean.append(query)
+    return clean[:5]
+
+
+def score_gasket_image_candidate(product: dict, item: dict, candidate: dict) -> float:
+    haystack = normalized(
+        " ".join(
+            str(candidate.get(key) or "")
+            for key in ["title", "image_url", "page_url", "source_name"]
+        )
+    )
+    score = 0.0
+    part = normalized(item.get("part_number") or item.get("universal_part_number") or "")
+    brand = normalized(product.get("brand") or "")
+    model = normalized(product.get("equipment_model") or "")
+    if part and part in haystack:
+        score += 48
+    if brand and brand in haystack:
+        score += 14
+    if model and model in haystack:
+        score += 18
+    if "GASKET" in haystack:
+        score += 18
+    if "DOOR" in haystack:
+        score += 8
+    if "REFRIGERATOR" in haystack or "FREEZER" in haystack:
+        score += 7
+    if any(token in haystack for token in ["CROSSSECTION", "CROSSSECTION", "PROFILE", "DIAGRAM"]):
+        score -= 30
+    if "STATICPROFILEIMAGES" in haystack or "PROFILE_IMAGES" in haystack:
+        score -= 100
+    width = candidate.get("image_width") or 0
+    height = candidate.get("image_height") or 0
+    try:
+        area = int(width) * int(height)
+    except Exception:
+        area = 0
+    if area >= 25000:
+        score += 6
+    return score
+
+
+def search_brave_gasket_images(client, product: dict, item: dict, limit: int = 8) -> list[dict]:
+    if not BRAVE_SEARCH_API_KEY:
+        return []
+    rows = []
+    seen = set()
+    for query in gasket_image_query_terms(product, item):
+        response = client.get(
+            "https://api.search.brave.com/res/v1/images/search",
+            params={"q": query, "count": min(limit, 10), "safesearch": "strict"},
+            headers={"Accept": "application/json", "X-Subscription-Token": BRAVE_SEARCH_API_KEY},
+            timeout=15,
+        )
+        if response.status_code >= 400:
+            continue
+        for result in response.json().get("results") or []:
+            props = result.get("properties") or {}
+            thumbnail = result.get("thumbnail") or {}
+            image_url = props.get("url") or thumbnail.get("src") or result.get("url")
+            if not image_url or image_url in seen:
+                continue
+            candidate = {
+                "image_url": image_url,
+                "page_url": result.get("url") or "",
+                "source_name": "Brave Images",
+                "title": result.get("title") or query,
+                "image_width": props.get("width"),
+                "image_height": props.get("height"),
+            }
+            if score_gasket_image_candidate(product, item, candidate) < GASKET_IMAGE_MIN_SCORE:
+                continue
+            if not is_displayable_image_url(client, image_url, timeout=3.0):
+                continue
+            seen.add(image_url)
+            rows.append(candidate)
+            if len(rows) >= limit:
+                return sorted(rows, key=lambda row: score_gasket_image_candidate(product, item, row), reverse=True)
+    return sorted(rows, key=lambda row: score_gasket_image_candidate(product, item, row), reverse=True)
+
+
+def quick_fill_gasket_item_image(client, product: dict, item: dict, limit: int = 8) -> bool:
+    existing = item.get("gasket_image_url")
+    if existing and "profile_images" not in str(existing).lower() and is_displayable_image_url(client, existing, timeout=3.0):
+        return True
+    candidates = search_brave_gasket_images(client, product, item, limit=limit)
+    if not candidates:
+        return False
+    best = candidates[0]
+    response = client.patch(
+        f"{SUPABASE_URL}/rest/v1/refrigerator_product_gaskets",
+        headers=supabase_headers("return=representation"),
+        params={"id": f"eq.{item['id']}"},
+        json={
+            "gasket_image_url": best["image_url"],
+            "source_url": item.get("source_url") or best.get("page_url"),
+        },
+    )
+    response.raise_for_status()
+    item["gasket_image_url"] = best["image_url"]
+    if not item.get("source_url"):
+        item["source_url"] = best.get("page_url")
+    return True
 
 
 def model_similarity(left: str | None, right: str | None) -> float:
