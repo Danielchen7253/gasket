@@ -285,6 +285,24 @@ main{max-width:none;padding:0}
                 with httpx.Client(timeout=25) as image_client:
                     for item in missing_gasket_images:
                         quick_fill_gasket_item_image(image_client, product, item, limit=6)
+                    donor = next((item for item in quote_items if item.get("gasket_image_url") and "profile_images" not in str(item.get("gasket_image_url")).lower()), None)
+                    if donor:
+                        donor_key = (donor.get("part_number") or donor.get("universal_part_number") or donor.get("dimensions_text") or f"{donor.get('width_in')}x{donor.get('height_in')}")
+                        for item in quote_items:
+                            if item.get("gasket_image_url"):
+                                continue
+                            item_key = (item.get("part_number") or item.get("universal_part_number") or item.get("dimensions_text") or f"{item.get('width_in')}x{item.get('height_in')}")
+                            if item_key != donor_key:
+                                continue
+                            image_client.patch(
+                                f"{g['SUPABASE_URL']}/rest/v1/refrigerator_product_gaskets",
+                                headers=g["supabase_headers"]("return=representation"),
+                                params={"id": f"eq.{item['id']}"},
+                                json={"gasket_image_url": donor.get("gasket_image_url"), "source_url": item.get("source_url") or donor.get("source_url")},
+                            ).raise_for_status()
+                            item["gasket_image_url"] = donor.get("gasket_image_url")
+                            if not item.get("source_url"):
+                                item["source_url"] = donor.get("source_url")
         except Exception as exc:
             print(f"foreground gasket image fill failed for product {product.get('id')}: {exc}", flush=True)
 
