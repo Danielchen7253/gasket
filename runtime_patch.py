@@ -63,9 +63,9 @@ Automatic reading is unavailable right now. The uploaded photo is saved; enter t
             if recognition_error else ""
         )
         return g["page"]("Confirm Nameplate", f"""
-<section class="step-card is-active"><div class="step-head"><div class="step-kicker"><span class="step-number">1</span><span>Confirm refrigerator brand and model</span></div><span class="step-score">Needs customer check</span></div>
-<p class="muted">Compare the red model box with the nameplate photo. Correct it now if AI misread any character.</p>{recognition_notice}
-<div class="result-grid"><div><h3>Nameplate photo</h3><button class="image-open" type="button" data-image-viewer-src="{esc(upload_url)}"><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></button><p class="muted">Click the nameplate photo to zoom and drag.</p><a class="help-link" href="/guide/model-number">How to confirm the model number</a></div>
+<section><h2>Confirm refrigerator information</h2>
+<p>Check the nameplate and product information. Correct anything wrong before matching gasket records.</p>{recognition_notice}
+<div class="result-grid"><div><h3>Nameplate photo</h3><button class="image-open" type="button" data-image-viewer-src="{esc(upload_url)}"><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></button><p class="muted">Click the nameplate photo to zoom and drag.</p></div>
 <form method="post" action="/match" enctype="multipart/form-data"><h3>Read information</h3>
 <input type="hidden" name="upload_url" value="{esc(upload_url)}">
 <input type="hidden" name="customer_name" value="{esc(customer.get('customer_name') or '')}">
@@ -85,7 +85,7 @@ Automatic reading is unavailable right now. The uploaded photo is saved; enter t
 <div><label>Active / discontinued status</label><input name="lifecycle_status" value="{esc(product.get('lifecycle_status') or '')}"></div>
 </div>
 <input type="hidden" name="raw_text" value="{esc(raw_text)}">
-<p><button type="submit">Brand and model are correct</button> <a class="button" href="/">Upload another</a></p>
+<p><button type="submit">Confirm and match gasket records</button> <a class="button" href="/">Upload another</a></p>
 </form></div></section>
 <div class="image-viewer" id="image-viewer" aria-hidden="true">
 <div class="image-viewer-tools"><button type="button" data-zoom="out">-</button><button type="button" data-zoom="in">+</button><button type="button" data-close-viewer>Close</button></div>
@@ -148,23 +148,15 @@ main{max-width:none;padding:0}
 .home-stats{width:100%;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:16px 0 0}
 .home-stats .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .guide-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-.step-card{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:18px;margin-bottom:14px}
-.step-card.is-active{border-color:#0a6f78;box-shadow:0 10px 26px rgba(10,111,120,.08)}
-.step-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
-.step-kicker{display:flex;align-items:center;gap:10px;color:#0d1f2a;font-weight:800}
-.step-number{width:30px;height:30px;border-radius:999px;background:#0a6f78;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
-.step-score{border:1px solid #f5c26b;background:#fff8ea;color:#8a5200;border-radius:999px;padding:6px 10px;font-size:13px;font-weight:800;white-space:nowrap}
-.help-link{display:inline-flex;align-items:center;min-height:34px;border:1px solid #c9e7ea;border-radius:6px;background:#eefbfc;color:#007c89;text-decoration:none;padding:0 12px;font-weight:700;font-size:13px}
 @media(max-width:900px){.work-zone{grid-template-columns:1fr}.home-form .grid{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr}.upload-row button{width:100%;justify-content:center;text-align:center}}
 @media(max-width:900px){.home-stats .summary{grid-template-columns:1fr}}
 </style>"""
         return g["page"]("Gasket Match", f"""
 {upload_style}
 <div class="work-shell"><div class="work-zone"><div style="width:100%">
-<form id="upload" class="home-form step-card is-active" method="post" action="/read-nameplate" enctype="multipart/form-data"><div class="step-head"><div class="step-kicker"><span class="step-number">1</span><span>Upload nameplate and confirm model</span></div><span class="step-score">Waiting for photo</span></div>{warning}
-<p class="muted">Upload the nameplate first. If you already know the exact brand and model, type them here so the result can be corrected faster.</p>
-<div class="grid"><div><label>Brand, if known</label><input name="brand" placeholder="Whirlpool, True, Sub-Zero"></div><div><label>Model, if known</label><input name="equipment_model" placeholder="WRF535SMHZ03"></div></div>
-<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div><div class="guide-links"><a class="help-link" href="/guide/model-number">How to find the model number</a></div></form>
+<form id="upload" class="home-form" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
+<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div></div>
+<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>{guide_links()}</form>
 <section class="home-stats"><h2>Fit database coverage</h2><div class="summary">
 <div class="metric"><span>Refrigerator models</span><strong data-public-stat="product_total">...</strong></div>
 <div class="metric"><span>Door gasket records</span><strong data-public-stat="quote_items">...</strong></div>
@@ -339,51 +331,9 @@ main{max-width:none;padding:0}
 
         summary_html = "" if pending_new else f"""<div class="summary"><div class="metric"><span>Door positions</span><strong>{len(quote_items)}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
         rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
-        product_name = f"{product.get('brand') or ''} {product.get('equipment_model') or ''}".strip()
-        dimension_boxes = []
-        for item in quote_items[:6]:
-            label = item.get("door_position_display") or item.get("door_position") or "Door"
-            dimension_boxes.append(
-                f"""<div class="dimension-box"><strong>{esc(label)}</strong><span class="muted">{esc(gasket_size(item))}</span><label>Width<input value="{esc(item.get('width_in') or '')}" placeholder="Width"></label><label>Height<input value="{esc(item.get('height_in') or '')}" placeholder="Height"></label></div>"""
-            )
-        if not dimension_boxes:
-            dimension_boxes.append(f"""<div class="dimension-box"><strong>Gasket dimensions</strong><span class="muted">{gasket_loading}</span></div>""")
-        profile_images = []
-        for item in quote_items:
-            value = item.get("profile_image_url")
-            if value and value not in profile_images:
-                profile_images.append(value)
         profile_visual = f"<img src='{esc(profile_image)}' alt='Gasket cross-section'>" if profile_image else "<span>Gasket profile</span>"
-        alternate_profiles = "".join(
-            f"""<div class="profile-alt"><img src="{esc(url)}" alt="Alternate gasket profile"><span class="muted">Backup profile option</span></div>"""
-            for url in profile_images[1:4]
-        ) or """<div class="profile-alt"><span class="muted">Backup profiles will appear here when available.</span></div>"""
         return g["page"]("Matched Gasket Quote", f"""
 <style>
-.step-strip{{min-height:58px;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:16px}}
-.step-strip strong{{color:#0d1f2a}}
-.step-strip span{{color:#687385}}
-.step-card{{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:18px;margin-bottom:14px}}
-.step-card.is-active{{border-color:#0a6f78;box-shadow:0 10px 26px rgba(10,111,120,.08)}}
-.step-head{{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}}
-.step-kicker{{display:flex;align-items:center;gap:10px;color:#0d1f2a;font-weight:800}}
-.step-number{{width:30px;height:30px;border-radius:999px;background:#0a6f78;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px}}
-.step-score{{border:1px solid #b7e2d1;background:#edfdf5;color:#12633f;border-radius:999px;padding:6px 10px;font-size:13px;font-weight:800;white-space:nowrap}}
-.step-score.low{{border-color:#f5c26b;background:#fff8ea;color:#8a5200}}
-.step-actions{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}}
-.help-link{{display:inline-flex;align-items:center;min-height:34px;border:1px solid #c9e7ea;border-radius:6px;background:#eefbfc;color:#007c89;text-decoration:none;padding:0 12px;font-weight:700;font-size:13px}}
-.flow-locked{{display:none}}
-.flow-complete{{display:none}}
-.dimension-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}}
-.dimension-box{{border:1px solid #dbe2ea;border-radius:8px;padding:12px;background:#fbfdfe}}
-.dimension-box strong{{display:block;margin-bottom:6px}}
-.dimension-box input{{margin-top:6px}}
-.profile-confirm-layout{{display:grid;grid-template-columns:280px 1fr;gap:18px;align-items:start}}
-.profile-main-box{{width:100%;height:280px;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#687385}}
-.profile-main-box img{{width:100%;height:100%;object-fit:contain}}
-.profile-alt-list{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}}
-.profile-alt{{border:1px solid #dbe2ea;border-radius:8px;background:#fbfdfe;padding:10px}}
-.profile-alt img{{width:100%;height:110px;object-fit:contain;border:1px solid #dbe2ea;border-radius:6px;background:#fff}}
 .gasket-layout{{display:grid;grid-template-columns:260px minmax(0,1fr);gap:18px;align-items:start}}
 .gasket-profile-panel{{position:static}}
 .gasket-profile-box{{width:240px;height:240px;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#6b7280;font-size:14px}}
@@ -416,19 +366,13 @@ main{max-width:none;padding:0}
 .shipping-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}}
 .shipping-grid .wide{{grid-column:span 2}}
 .checkout-error{{display:none;margin-top:12px;border:1px solid #f2b8b5;background:#fff1f0;color:#5f1410;border-radius:8px;padding:12px}}
-@media(max-width:860px){{.gasket-layout,.profile-confirm-layout,.profile-alt-list,.dimension-grid{{grid-template-columns:1fr}}.gasket-profile-panel{{position:static}}.gasket-profile-box,.profile-help-button{{width:100%}}.gasket-profile-box{{height:220px}}.profile-guide-grid{{grid-template-columns:1fr}}.gasket-option{{grid-template-columns:28px 88px 1fr;align-items:start}}.gasket-thumb{{width:78px;height:78px}}.gasket-option .price{{grid-column:3;text-align:left}}.gasket-copy{{max-width:none}}.checkout-actions{{display:block}}.checkout-actions button{{width:100%;justify-content:center}}.shipping-grid{{grid-template-columns:1fr}}.shipping-grid .wide{{grid-column:auto}}.step-strip,.step-head{{align-items:flex-start;flex-direction:column}}}}
+@media(max-width:860px){{.gasket-layout{{grid-template-columns:1fr}}.gasket-profile-panel{{position:static}}.gasket-profile-box,.profile-help-button{{width:100%}}.gasket-profile-box{{height:220px}}.profile-guide-grid{{grid-template-columns:1fr}}.gasket-option{{grid-template-columns:28px 88px 1fr;align-items:start}}.gasket-thumb{{width:78px;height:78px}}.gasket-option .price{{grid-column:3;text-align:left}}.gasket-copy{{max-width:none}}.checkout-actions{{display:block}}.checkout-actions button{{width:100%;justify-content:center}}.shipping-grid{{grid-template-columns:1fr}}.shipping-grid .wide{{grid-column:auto}}}}
 </style>
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
-{loading_banner}
-<div class="step-strip"><div><strong>Step 1 complete: refrigerator model confirmed</strong><br><span>{esc(product_name)} · Serial {esc(nameplate_data.get('serial_number') or 'not found')}</span></div><span class="step-score">100</span></div>
-<section class="step-card is-active" id="step-dimensions"><div class="step-head"><div class="step-kicker"><span class="step-number">2</span><span>Confirm door positions and gasket dimensions</span></div><span class="step-score low">Customer check needed</span></div><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Door layout</h3>{product_facts}</div></div><div class="dimension-grid">{''.join(dimension_boxes)}</div><div class="step-actions"><a class="help-link" href="/guide/model-number">How to measure gasket size</a><button type="button" data-confirm-step="#step-dimensions" data-strip="#strip-dimensions" data-next-step="#step-profile">Dimensions are correct</button></div></section>
-<div class="step-strip flow-locked" id="strip-dimensions"><div><strong>Step 2 complete: door positions and dimensions confirmed</strong><br><span>{esc(door_text)}</span></div><span class="step-score">100</span></div>
-<section class="step-card flow-locked" id="step-profile"><div class="step-head"><div class="step-kicker"><span class="step-number">3</span><span>Confirm gasket cross-section profile</span></div><span class="step-score low">Final fit check</span></div><div class="profile-confirm-layout"><div><div class="profile-main-box">{profile_visual}</div><div class="step-actions"><button class="help-link" type="button" data-open-profile-guide>How to confirm gasket profile</button></div></div><div><h3>Recommended profile</h3><p class="muted">Compare the old gasket cross-section with the main image. If it is different, use a backup option or send a close-up profile photo before production.</p><div class="profile-alt-list">{alternate_profiles}</div></div></div><div class="step-actions"><button type="button" data-confirm-step="#step-profile" data-strip="#strip-profile" data-next-step="#checkout-step">Profile is correct</button></div></section>
-<div class="step-strip flow-locked" id="strip-profile"><div><strong>Step 3 complete: gasket profile confirmed</strong><br><span>The selected gasket can move to checkout.</span></div><span class="step-score">100</span></div>
-<section class="flow-locked" id="checkout-step"><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}"><div class="gasket-layout"><aside class="gasket-profile-panel"><div class="gasket-profile-box">{profile_visual}</div><button class="profile-help-button" type="button" data-open-profile-guide>How to confirm your gasket profile</button></aside><div class="gasket-quote-main">{summary_html}<div class="gasket-list">{rows_html}</div></div></div><div class="shipping-panel" data-shipping-panel><h3>Shipping information</h3><div class="shipping-grid"><label>Name<input data-required-check name="customer_name" autocomplete="name"></label><label>Phone<input data-required-check name="customer_phone" autocomplete="tel"></label><label>Email<input data-required-check type="email" name="customer_email" autocomplete="email"></label><label class="wide">Shipping address<input data-required-check data-address-autocomplete name="shipping_address1" placeholder="Shipping address" autocomplete="shipping street-address"></label><input type="hidden" name="shipping_address2" data-address-line2><input type="hidden" name="shipping_city" data-address-city><input type="hidden" name="shipping_state" data-address-state><input type="hidden" name="shipping_zip" data-address-zip><input type="hidden" name="shipping_country" value="United States" data-address-country></div></div><div class="checkout-actions"><button type="submit" data-checkout-button>Purchase selected gaskets</button></div><div class="checkout-error" data-checkout-error></div></form></section>
+{loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div>{product_facts}</section>
+<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}"><div class="gasket-layout"><aside class="gasket-profile-panel"><div class="gasket-profile-box">{profile_visual}</div><button class="profile-help-button" type="button" data-open-profile-guide>How to confirm your gasket profile</button></aside><div class="gasket-quote-main">{summary_html}<div class="gasket-list">{rows_html}</div></div></div><div class="shipping-panel" data-shipping-panel><h3>Shipping information</h3><div class="shipping-grid"><label>Name<input data-required-check name="customer_name" autocomplete="name"></label><label>Phone<input data-required-check name="customer_phone" autocomplete="tel"></label><label>Email<input data-required-check type="email" name="customer_email" autocomplete="email"></label><label class="wide">Shipping address<input data-required-check data-address-autocomplete name="shipping_address1" placeholder="Shipping address" autocomplete="shipping street-address"></label><input type="hidden" name="shipping_address2" data-address-line2><input type="hidden" name="shipping_city" data-address-city><input type="hidden" name="shipping_state" data-address-state><input type="hidden" name="shipping_zip" data-address-zip><input type="hidden" name="shipping_country" value="United States" data-address-country></div></div><div class="checkout-actions"><button type="submit" data-checkout-button>Purchase selected gaskets</button></div><div class="checkout-error" data-checkout-error></div></form></section>
 <div class="profile-dialog" data-profile-dialog aria-hidden="true"><div class="profile-dialog-card"><div class="profile-dialog-head"><h3>How to confirm your gasket profile</h3><button class="profile-dialog-close" type="button" data-close-profile-guide>Close</button></div><p class="muted">The profile is the shape on the back of the gasket. A clear close-up helps us confirm how it locks into the door.</p><div class="profile-guide-grid"><div class="metric"><span>Step 1</span><strong>Lift one corner</strong><p>Pull one gasket corner slightly away from the door without removing the gasket.</p></div><div class="metric"><span>Step 2</span><strong>Take a side photo</strong><p>Photograph the cross-section shape from the side, not only the front face.</p></div><div class="metric"><span>Step 3</span><strong>Measure if possible</strong><p>Measure overall width, height, and the insert/base width.</p></div></div></div></div>
 <script>
-document.querySelectorAll('[data-confirm-step]').forEach(button=>button.addEventListener('click',()=>{{let current=document.querySelector(button.getAttribute('data-confirm-step'));let strip=document.querySelector(button.getAttribute('data-strip'));let next=document.querySelector(button.getAttribute('data-next-step'));if(current)current.classList.add('flow-complete');if(strip)strip.classList.remove('flow-locked');if(next){{next.classList.remove('flow-locked');next.scrollIntoView();}}}}));
 document.querySelectorAll('[data-open-profile-guide]').forEach(button=>button.addEventListener('click',()=>{{let dialog=document.querySelector('[data-profile-dialog]');if(dialog){{dialog.classList.add('is-open');dialog.setAttribute('aria-hidden','false');}}}}));
 document.querySelectorAll('[data-close-profile-guide]').forEach(button=>button.addEventListener('click',()=>{{let dialog=document.querySelector('[data-profile-dialog]');if(dialog){{dialog.classList.remove('is-open');dialog.setAttribute('aria-hidden','true');}}}}));
 document.querySelectorAll('[data-profile-dialog]').forEach(dialog=>dialog.addEventListener('click',event=>{{if(event.target===dialog){{dialog.classList.remove('is-open');dialog.setAttribute('aria-hidden','true');}}}}));
