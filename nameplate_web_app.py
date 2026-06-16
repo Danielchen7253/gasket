@@ -1690,9 +1690,9 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 .metric{{border:1px solid #dbe2ea;border-radius:8px;padding:12px;background:#fbfdfe}} .metric span,.muted{{color:#687385}} .metric strong{{font-size:24px}}
 .photo{{width:100%;height:320px;object-fit:contain;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc}}
 .plate{{width:100%;height:190px;object-fit:contain;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc}}
-.model-confirm-input{{border:2px solid #d93025!important;background:#fffafa!important;box-shadow:0 0 0 3px rgba(217,48,37,.12)}}
-.model-check-notice{{margin-top:8px;border:2px solid #d93025;background:#fff1f0;color:#5f1410;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}}
-.model-check-notice strong{{display:block;margin-bottom:4px;color:#3b0906}}
+.model-confirm-input{{border:2px solid #f2b544!important;background:#fffdf4!important;box-shadow:0 0 0 3px rgba(242,181,68,.18)}}
+.model-check-notice{{margin-top:8px;border:1px solid #f2b544;background:#fffdf4;color:#6b4a00;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}}
+.model-check-notice strong{{display:block;margin-bottom:4px;color:#4c3400}}
 .image-open{{display:block;width:100%;padding:0;border:0;background:transparent;cursor:zoom-in}}
 .image-viewer{{position:fixed;inset:0;background:rgba(7,16,22,.88);display:none;z-index:9999}}
 .image-viewer.is-open{{display:block}}
@@ -1747,15 +1747,10 @@ def render_confirm_nameplate(upload_url: str, customer: dict, nameplate_data: di
     raw_text = nameplate_data.get("raw_text") or ""
     recognition_notice = ""
     if nameplate_data.get("recognition_error"):
-        recognition_notice = """
-<div class="model-check-notice">
-<strong>Please type the brand and model from the nameplate.</strong>
-Automatic reading is unavailable right now. The uploaded photo is saved; enter the exact brand and model, then continue matching.
-</div>"""
+        recognition_notice = ""
     model_notice = """
 <div class="model-check-notice">
-<strong>Important: confirm the model number exactly.</strong>
-AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match the nameplate before you continue.
+You can open the image to confirm the brand and model. This is important.
 </div>"""
     return page("Confirm Nameplate", f"""
 <section><h2>Confirm nameplate information</h2>
@@ -1766,9 +1761,9 @@ AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match th
 <input type="hidden" name="customer_name" value="{esc(customer.get('customer_name') or '')}">
 <input type="hidden" name="customer_email" value="{esc(customer.get('customer_email') or '')}">
 <input type="hidden" name="customer_phone" value="{esc(customer.get('customer_phone') or '')}">
-<div class="grid"><div><label>Brand</label><input name="brand" value="{esc(brand or '')}"></div><div><label>Model</label><input class="model-confirm-input" name="equipment_model" value="{esc(model or '')}">{model_notice}</div><div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div><div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or '')}"></div><div><label>Manufacture date</label><input name="manufacture_date" value="{esc(nameplate_data.get('manufacture_date') or '')}"></div><div><label>Refrigerant</label><input name="refrigerant" value="{esc(nameplate_data.get('refrigerant') or '')}"></div><div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div></div>
+<div class="grid"><div><label>Brand</label><input class="model-confirm-input" name="brand" value="{esc(brand or '')}"></div><div><label>Model</label><input class="model-confirm-input" name="equipment_model" value="{esc(model or '')}">{model_notice}</div><div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div><div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or '')}"></div><div><label>Manufacture date</label><input name="manufacture_date" value="{esc(nameplate_data.get('manufacture_date') or '')}"></div><div><label>Refrigerant</label><input name="refrigerant" value="{esc(nameplate_data.get('refrigerant') or '')}"></div><div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div></div>
 <label>Raw text</label><textarea name="raw_text" style="width:100%;min-height:110px;border:1px solid #dbe2ea;border-radius:6px;padding:10px">{esc(raw_text)}</textarea>
-<p><button type="submit">Confirm as 100% and match gasket records</button> <a class="button" href="/">Upload another</a></p>
+<p><button type="submit">Confirmed</button> <a class="button" href="/">Upload another</a></p>
 </form></div></section>
 <div class="image-viewer" id="image-viewer" aria-hidden="true">
 <div class="image-viewer-tools"><button type="button" data-zoom="out">-</button><button type="button" data-zoom="in">+</button><button type="button" data-close-viewer>Close</button></div>
