@@ -1693,6 +1693,32 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 .model-confirm-input{{border:2px solid #d93025!important;background:#fffafa!important;box-shadow:0 0 0 3px rgba(217,48,37,.12)}}
 .model-check-notice{{margin-top:8px;border:2px solid #d93025;background:#fff1f0;color:#5f1410;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}}
 .model-check-notice strong{{display:block;margin-bottom:4px;color:#3b0906}}
+.step-flow{{display:grid;gap:14px}}
+.step-card{{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:18px;margin-bottom:14px}}
+.step-card.is-active{{border-color:#0a6f78;box-shadow:0 10px 26px rgba(10,111,120,.08)}}
+.step-head{{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}}
+.step-kicker{{display:flex;align-items:center;gap:10px;color:#0d1f2a;font-weight:800}}
+.step-number{{width:30px;height:30px;border-radius:999px;background:#0a6f78;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px}}
+.step-score{{border:1px solid #b7e2d1;background:#edfdf5;color:#12633f;border-radius:999px;padding:6px 10px;font-size:13px;font-weight:800;white-space:nowrap}}
+.step-score.low{{border-color:#f5c26b;background:#fff8ea;color:#8a5200}}
+.step-strip{{min-height:58px;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:16px}}
+.step-strip strong{{color:#0d1f2a}}
+.step-strip span{{color:#687385}}
+.step-actions{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}}
+.help-link{{display:inline-flex;align-items:center;min-height:34px;border:1px solid #c9e7ea;border-radius:6px;background:#eefbfc;color:#007c89;text-decoration:none;padding:0 12px;font-weight:700;font-size:13px}}
+.flow-locked{{display:none}}
+.flow-complete{{display:none}}
+.dimension-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}}
+.dimension-box{{border:1px solid #dbe2ea;border-radius:8px;padding:12px;background:#fbfdfe}}
+.dimension-box strong{{display:block;margin-bottom:6px}}
+.dimension-box input{{margin-top:6px}}
+.profile-confirm-layout{{display:grid;grid-template-columns:280px 1fr;gap:18px;align-items:start}}
+.profile-main-box{{width:100%;height:280px;border:1px solid #dbe2ea;border-radius:8px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#687385}}
+.profile-main-box img{{width:100%;height:100%;object-fit:contain}}
+.profile-alt-list{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}}
+.profile-alt{{border:1px solid #dbe2ea;border-radius:8px;background:#fbfdfe;padding:10px}}
+.profile-alt img{{width:100%;height:110px;object-fit:contain;border:1px solid #dbe2ea;border-radius:6px;background:#fff}}
+.upload-working{{margin-top:14px;border:1px solid #c9e7ea;background:#eefbfc;color:#0d5961;border-radius:8px;padding:12px}}
 .image-open{{display:block;width:100%;padding:0;border:0;background:transparent;cursor:zoom-in}}
 .image-viewer{{position:fixed;inset:0;background:rgba(7,16,22,.88);display:none;z-index:9999}}
 .image-viewer.is-open{{display:block}}
@@ -1708,8 +1734,9 @@ button,.button{{border:0;border-radius:6px;background:#0a6f78;color:white;min-he
 @keyframes pulse{{0%{{background-position:0 0}}100%{{background-position:220% 0}}}}
 @media(max-width:860px){{.hero,.result-grid,.grid,.summary,.item{{grid-template-columns:1fr}}}}
 @media(max-width:860px){{.upload-row{{grid-template-columns:1fr}}}}
+@media(max-width:860px){{.profile-confirm-layout,.profile-alt-list,.dimension-grid{{grid-template-columns:1fr}}.step-strip,.step-head{{align-items:flex-start;flex-direction:column}}}}
 </style></head><body><header class="app-header"><div class="app-header-inner"><a class="app-logo" href="/" aria-label="Home">GM</a><div><div class="app-title">{esc(title)}</div><div class="app-subtitle">冰箱门封条识别与订单系统</div></div></div></header><main>{body}</main><footer class="app-footer"><div class="app-footer-inner"><strong>Ready to order?</strong><span class="muted">Select the gasket solution for this refrigerator.</span></div></footer>
-<script>function updateTotal(){{let t=0,c=0;document.querySelectorAll('[data-price]').forEach(b=>{{if(b.checked){{t+=Number(b.dataset.price||0);c++}}}});let a=document.getElementById('selected-total'),n=document.getElementById('selected-count');if(a)a.textContent='$'+t.toFixed(2);if(n)n.textContent=c}}function fmt(s){{let m=Math.floor(s/60),r=s%60;return String(m).padStart(2,'0')+':'+String(r).padStart(2,'0')}}function startLoadingTimers(){{let start=Date.now();setInterval(()=>{{let s=Math.floor((Date.now()-start)/1000);document.querySelectorAll('[data-loading-label]').forEach(el=>{{el.textContent=el.getAttribute('data-loading-label')+' '+fmt(s)}})}},1000)}}function startUploadFeedback(){{let f=document.getElementById('upload');if(!f)return;f.addEventListener('submit',()=>{{let b=f.querySelector('button[type=\"submit\"]');if(b){{b.disabled=true;b.textContent='Reading nameplate...'}}let n=document.createElement('div');n.className='upload-working';n.innerHTML='<strong>Reading nameplate</strong><br><span>AI is extracting the refrigerator model. This usually takes a few seconds.</span>';f.appendChild(n)}})}}function initImageViewer(){{let viewer=document.getElementById('image-viewer'),img=document.getElementById('image-viewer-img');if(!viewer||!img)return;let scale=1,x=0,y=0,drag=false,sx=0,sy=0;function apply(){{img.style.transform='translate('+x+'px,'+y+'px) scale('+scale+')'}}document.querySelectorAll('[data-image-viewer-src]').forEach(btn=>btn.addEventListener('click',()=>{{img.src=btn.getAttribute('data-image-viewer-src');scale=1;x=0;y=0;apply();viewer.classList.add('is-open');viewer.setAttribute('aria-hidden','false')}}));viewer.querySelector('[data-close-viewer]')?.addEventListener('click',()=>{{viewer.classList.remove('is-open');viewer.setAttribute('aria-hidden','true')}});viewer.querySelector('[data-zoom=\"in\"]')?.addEventListener('click',()=>{{scale=Math.min(5,scale+.25);apply()}});viewer.querySelector('[data-zoom=\"out\"]')?.addEventListener('click',()=>{{scale=Math.max(.5,scale-.25);apply()}});viewer.querySelector('.image-viewer-stage')?.addEventListener('pointerdown',e=>{{drag=true;sx=e.clientX-x;sy=e.clientY-y}});window.addEventListener('pointermove',e=>{{if(!drag)return;x=e.clientX-sx;y=e.clientY-sy;apply()}});window.addEventListener('pointerup',()=>drag=false);window.addEventListener('keydown',e=>{{if(e.key==='Escape')viewer.classList.remove('is-open')}})}}document.addEventListener('change',updateTotal);window.addEventListener('load',updateTotal);window.addEventListener('load',startLoadingTimers);window.addEventListener('load',startUploadFeedback);window.addEventListener('load',initImageViewer);function pollProductStatus(){{let el=document.querySelector('[data-refresh-product]');if(!el)return;let id=el.getAttribute('data-refresh-product');let wantsImage=el.getAttribute('data-needs-image')==='1';let wantsGasket=el.getAttribute('data-needs-gasket')==='1';if(!wantsImage&&!wantsGasket)return;setInterval(async()=>{{try{{let r=await fetch('/product-status?product_id='+encodeURIComponent(id),{{cache:'no-store'}});let d=await r.json();if((wantsImage&&d.product_image_url)||(wantsGasket&&d.quote_item_count>0))window.location.reload();}}catch(e){{}}}},2000)}}window.addEventListener('load',pollProductStatus)</script>
+<script>function updateTotal(){{let t=0,c=0;document.querySelectorAll('[data-price]').forEach(b=>{{if(b.checked){{t+=Number(b.dataset.price||0);c++}}}});let a=document.getElementById('selected-total'),n=document.getElementById('selected-count');if(a)a.textContent='$'+t.toFixed(2);if(n)n.textContent=c}}function fmt(s){{let m=Math.floor(s/60),r=s%60;return String(m).padStart(2,'0')+':'+String(r).padStart(2,'0')}}function startLoadingTimers(){{let start=Date.now();setInterval(()=>{{let s=Math.floor((Date.now()-start)/1000);document.querySelectorAll('[data-loading-label]').forEach(el=>{{el.textContent=el.getAttribute('data-loading-label')+' '+fmt(s)}})}},1000)}}function startUploadFeedback(){{let f=document.getElementById('upload');if(!f)return;f.addEventListener('submit',()=>{{let b=f.querySelector('button[type=\"submit\"]');if(b){{b.disabled=true;b.textContent='Reading nameplate...'}}let n=document.createElement('div');n.className='upload-working';n.innerHTML='<strong>Reading nameplate</strong><br><span>AI is extracting the refrigerator model. This usually takes a few seconds.</span>';f.appendChild(n)}})}}function initImageViewer(){{let viewer=document.getElementById('image-viewer'),img=document.getElementById('image-viewer-img');if(!viewer||!img)return;let scale=1,x=0,y=0,drag=false,sx=0,sy=0;function apply(){{img.style.transform='translate('+x+'px,'+y+'px) scale('+scale+')'}}document.querySelectorAll('[data-image-viewer-src]').forEach(btn=>btn.addEventListener('click',()=>{{img.src=btn.getAttribute('data-image-viewer-src');scale=1;x=0;y=0;apply();viewer.classList.add('is-open');viewer.setAttribute('aria-hidden','false')}}));viewer.querySelector('[data-close-viewer]')?.addEventListener('click',()=>{{viewer.classList.remove('is-open');viewer.setAttribute('aria-hidden','true')}});viewer.querySelector('[data-zoom=\"in\"]')?.addEventListener('click',()=>{{scale=Math.min(5,scale+.25);apply()}});viewer.querySelector('[data-zoom=\"out\"]')?.addEventListener('click',()=>{{scale=Math.max(.5,scale-.25);apply()}});viewer.querySelector('.image-viewer-stage')?.addEventListener('pointerdown',e=>{{drag=true;sx=e.clientX-x;sy=e.clientY-y}});window.addEventListener('pointermove',e=>{{if(!drag)return;x=e.clientX-sx;y=e.clientY-sy;apply()}});window.addEventListener('pointerup',()=>drag=false);window.addEventListener('keydown',e=>{{if(e.key==='Escape')viewer.classList.remove('is-open')}})}}function initConfirmFlow(){{document.querySelectorAll('[data-confirm-step]').forEach(btn=>btn.addEventListener('click',()=>{{let current=document.querySelector(btn.getAttribute('data-confirm-step'));let next=document.querySelector(btn.getAttribute('data-next-step'));let strip=document.querySelector(btn.getAttribute('data-strip'));if(current)current.classList.add('flow-complete');if(strip)strip.classList.remove('flow-locked');if(next){{next.classList.remove('flow-locked');next.scrollIntoView();}}}}));}}document.addEventListener('change',updateTotal);window.addEventListener('load',updateTotal);window.addEventListener('load',startLoadingTimers);window.addEventListener('load',startUploadFeedback);window.addEventListener('load',initImageViewer);window.addEventListener('load',initConfirmFlow);function pollProductStatus(){{let el=document.querySelector('[data-refresh-product]');if(!el)return;let id=el.getAttribute('data-refresh-product');let wantsImage=el.getAttribute('data-needs-image')==='1';let wantsGasket=el.getAttribute('data-needs-gasket')==='1';if(!wantsImage&&!wantsGasket)return;setInterval(async()=>{{try{{let r=await fetch('/product-status?product_id='+encodeURIComponent(id),{{cache:'no-store'}});let d=await r.json();if((wantsImage&&d.product_image_url)||(wantsGasket&&d.quote_item_count>0))window.location.reload();}}catch(e){{}}}},2000)}}window.addEventListener('load',pollProductStatus)</script>
 <script src="https://crm-8t7y.onrender.com/chat/widget.js"></script>
 </body></html>""".encode("utf-8")
 
@@ -1735,10 +1762,17 @@ fetch('/public-stats', {{cache:'no-store'}}).then(r=>r.json()).then(data=>{{
 }}).catch(()=>{{}});
 </script>"""
     return page("Gasket Match", f"""
-<section><form id="upload" method="post" action="/read-nameplate" enctype="multipart/form-data"><h2>Upload nameplate</h2>{warning}
-<div class="upload-row"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>
-<div class="grid"><div><label>Brand fallback</label><input name="brand"></div><div><label>Model fallback</label><input name="equipment_model"></div></div>
-<p class="muted">You can correct the brand or model before matching the database.</p></form></section>{stats_html}""")
+<div class="step-flow">
+<section class="step-card is-active">
+<form id="upload" method="post" action="/read-nameplate" enctype="multipart/form-data">
+<div class="step-head"><div class="step-kicker"><span class="step-number">1</span><span>Upload nameplate and confirm model</span></div><span class="step-score low">Waiting for photo</span></div>
+{warning}
+<p class="muted">Upload the nameplate first. If you already know the exact brand and model, type them here so the result can be corrected faster.</p>
+<div class="grid"><div><label>Brand, if known</label><input name="brand" placeholder="Whirlpool, True, Sub-Zero"></div><div><label>Model, if known</label><input name="equipment_model" placeholder="WRF535SMHZ03"></div><div><label>Help</label><a class="help-link" href="/guide/model-number" target="_blank" rel="noopener">How to find the model number</a></div></div>
+<div class="upload-row" style="margin-top:14px"><div><label>Nameplate photo</label><input type="file" name="nameplate" accept="image/*"></div><button type="submit">Read nameplate</button></div>
+</form>
+</section>
+</div>{stats_html}""")
 
 
 def render_confirm_nameplate(upload_url: str, customer: dict, nameplate_data: dict, fallback_brand: str = "", fallback_model: str = "") -> bytes:
@@ -1758,17 +1792,17 @@ Automatic reading is unavailable right now. The uploaded photo is saved; enter t
 AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match the nameplate before you continue.
 </div>"""
     return page("Confirm Nameplate", f"""
-<section><h2>Confirm nameplate information</h2>
-<p>Check the uploaded nameplate against the information below. If anything is wrong, edit it before matching the database.</p>{recognition_notice}
-<div class="result-grid"><div><h3>Nameplate photo</h3><button class="image-open" type="button" data-image-viewer-src="{esc(upload_url)}"><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></button><p class="muted">Click the nameplate photo to zoom and drag.</p></div>
+<section class="step-card is-active"><div class="step-head"><div class="step-kicker"><span class="step-number">1</span><span>Confirm refrigerator brand and model</span></div><span class="step-score low">Needs customer check</span></div>
+<p class="muted">Compare the red model box with the nameplate photo. Correct it now if AI misread any character.</p>{recognition_notice}
+<div class="result-grid"><div><h3>Nameplate photo</h3><button class="image-open" type="button" data-image-viewer-src="{esc(upload_url)}"><img class="photo" src="{esc(upload_url)}" alt="Uploaded nameplate"></button><p class="muted">Click the nameplate photo to zoom and drag.</p><a class="help-link" href="/guide/model-number" target="_blank" rel="noopener">How to confirm the model number</a></div>
 <form method="post" action="/match" enctype="multipart/form-data"><h3>Read information</h3>
 <input type="hidden" name="upload_url" value="{esc(upload_url)}">
 <input type="hidden" name="customer_name" value="{esc(customer.get('customer_name') or '')}">
 <input type="hidden" name="customer_email" value="{esc(customer.get('customer_email') or '')}">
 <input type="hidden" name="customer_phone" value="{esc(customer.get('customer_phone') or '')}">
 <div class="grid"><div><label>Brand</label><input name="brand" value="{esc(brand or '')}"></div><div><label>Model</label><input class="model-confirm-input" name="equipment_model" value="{esc(model or '')}">{model_notice}</div><div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div><div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or '')}"></div><div><label>Manufacture date</label><input name="manufacture_date" value="{esc(nameplate_data.get('manufacture_date') or '')}"></div><div><label>Refrigerant</label><input name="refrigerant" value="{esc(nameplate_data.get('refrigerant') or '')}"></div><div><label>Voltage</label><input name="voltage" value="{esc(nameplate_data.get('voltage') or '')}"></div></div>
-<label>Raw text</label><textarea name="raw_text" style="width:100%;min-height:110px;border:1px solid #dbe2ea;border-radius:6px;padding:10px">{esc(raw_text)}</textarea>
-<p><button type="submit">Confirm and match gasket records</button> <a class="button" href="/">Upload another</a></p>
+<input type="hidden" name="raw_text" value="{esc(raw_text)}">
+<div class="step-actions"><button type="submit">Brand and model are correct</button><a class="button" href="/">Upload another</a></div>
 </form></div></section>
 <div class="image-viewer" id="image-viewer" aria-hidden="true">
 <div class="image-viewer-tools"><button type="button" data-zoom="out">-</button><button type="button" data-zoom="in">+</button><button type="button" data-close-viewer>Close</button></div>
@@ -1899,6 +1933,28 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
 
     summary_html = "" if pending_new_product else f"""<div class="summary"><div class="metric"><span>Required gaskets</span><strong>{quantity}</strong></div><div class="metric"><span>Selected</span><strong id="selected-count">0</strong></div><div class="metric"><span>Total</span><strong id="selected-total">$0.00</strong></div></div>"""
     rows_html = "".join(rows) if rows else f"""<div class="item"><input type="checkbox" disabled><div class="loading" style="width:98px;height:78px;border:1px solid #dbe2ea;border-radius:6px"><span data-loading-label="{gasket_loading}">{gasket_loading} 00:00</span></div><div><strong>{gasket_loading}</strong></div><div class="price"><strong>Loading</strong></div><div></div></div>"""
+    product_name = f"{product.get('brand') or ''} {product.get('equipment_model') or ''}".strip()
+    door_text = ", ".join([item.get("label") or item.get("key") or "" for item in positions]) or "Door positions loading"
+    dimension_boxes = []
+    for item in quote_items[:6]:
+        label = item.get("door_position_display") or item.get("door_position") or "Door"
+        dimension_boxes.append(
+            f"""<div class="dimension-box"><strong>{esc(label)}</strong><span class="muted">{esc(customer_gasket_size(item))}</span><label>Width<input value="{esc(item.get('width_in') or '')}" placeholder="Width"></label><label>Height<input value="{esc(item.get('height_in') or '')}" placeholder="Height"></label></div>"""
+        )
+    if not dimension_boxes:
+        dimension_boxes.append(f"""<div class="dimension-box"><strong>Gasket dimensions</strong><span class="muted">{gasket_loading}</span></div>""")
+    profile_images = []
+    for item in quote_items:
+        for key in ("profile_image_url", "cross_section_image_url"):
+            value = item.get(key)
+            if value and value not in profile_images:
+                profile_images.append(value)
+    primary_profile = profile_images[0] if profile_images else ""
+    profile_visual = f"<img src='{esc(primary_profile)}' alt='Recommended gasket profile'>" if primary_profile else "<span>Profile image loading</span>"
+    alternate_profiles = "".join(
+        f"""<div class="profile-alt"><img src="{esc(url)}" alt="Alternate gasket profile"><span class="muted">Backup profile option</span></div>"""
+        for url in profile_images[1:4]
+    ) or """<div class="profile-alt"><span class="muted">Backup profiles will appear here when available.</span></div>"""
     return page("Matched Gasket Quote", f"""
 <style>
 .checkout-actions{{display:flex;justify-content:flex-end;margin-top:18px}}
@@ -1911,8 +1967,18 @@ def render_result(product: dict, quote_items: list[dict], request: dict | None, 
 @media(max-width:760px){{.checkout-actions{{display:block}}.checkout-actions button{{width:100%;justify-content:center}}.shipping-grid{{grid-template-columns:1fr}}.shipping-grid .wide{{grid-column:auto}}}}
 </style>
 <div data-refresh-product="{esc(product['id'])}" data-needs-image="{1 if needs_image else 0}" data-needs-gasket="{1 if needs_gasket else 0}" hidden></div>
-{loading_banner}<section><h2>Matched refrigerator</h2><div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Nameplate summary</h3><div class="facts"><div>OpenAI brand</div><div><strong>{esc(nameplate_data.get('brand') or product.get('brand'))}</strong></div><div>OpenAI model</div><div><strong>{esc(nameplate_data.get('model') or product.get('equipment_model'))}</strong></div><div>Serial</div><div>{esc(nameplate_data.get('serial_number') or 'Not found')}</div><div>Brand</div><div><strong>{esc(product.get('brand'))}</strong></div><div>Model</div><div><strong>{esc(product.get('equipment_model'))}</strong></div></div></div></div></section>
-<section><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="shipping-panel" data-shipping-panel><h3>Shipping information</h3><div class="shipping-grid"><label>Name<input data-required-check name="customer_name" autocomplete="name"></label><label>Phone<input data-required-check name="customer_phone" autocomplete="tel"></label><label>Email<input data-required-check type="email" name="customer_email" autocomplete="email"></label><label class="wide">Shipping address<input data-required-check data-address-autocomplete name="shipping_address1" placeholder="Shipping address" autocomplete="shipping street-address"></label><input type="hidden" name="shipping_address2" data-address-line2><input type="hidden" name="shipping_city" data-address-city><input type="hidden" name="shipping_state" data-address-state><input type="hidden" name="shipping_zip" data-address-zip><input type="hidden" name="shipping_country" value="United States" data-address-country></div></div><div class="checkout-actions"><button type="submit" data-checkout-button>Purchase selected gaskets</button></div><div class="checkout-error" data-checkout-error></div></form></section>
+{loading_banner}
+<div class="step-strip"><div><strong>Step 1 complete: refrigerator model confirmed</strong><br><span>{esc(product_name)} · Serial {esc(nameplate_data.get('serial_number') or 'not found')}</span></div><span class="step-score">100</span></div>
+<section class="step-card is-active" id="step-dimensions"><div class="step-head"><div class="step-kicker"><span class="step-number">2</span><span>Confirm door positions and gasket dimensions</span></div><span class="step-score low">Customer check needed</span></div>
+<div class="result-grid"><div><h3>Refrigerator image</h3>{product_html}</div><div><h3>Nameplate</h3>{plate_html}</div><div><h3>Door layout</h3><p class="muted">{esc(door_text)}</p></div></div>
+<div class="dimension-grid">{''.join(dimension_boxes)}</div>
+<div class="step-actions"><a class="help-link" href="/guide/model-number" target="_blank" rel="noopener">How to measure gasket size</a><button type="button" data-confirm-step="#step-dimensions" data-strip="#strip-dimensions" data-next-step="#step-profile">Dimensions are correct</button></div></section>
+<div class="step-strip flow-locked" id="strip-dimensions"><div><strong>Step 2 complete: door positions and dimensions confirmed</strong><br><span>{esc(door_text)}</span></div><span class="step-score">100</span></div>
+<section class="step-card flow-locked" id="step-profile"><div class="step-head"><div class="step-kicker"><span class="step-number">3</span><span>Confirm gasket cross-section profile</span></div><span class="step-score low">Final fit check</span></div>
+<div class="profile-confirm-layout"><div><div class="profile-main-box">{profile_visual}</div><div class="step-actions"><a class="help-link" href="/guide/gasket-profile" target="_blank" rel="noopener">How to confirm gasket profile</a></div></div><div><h3>Recommended profile</h3><p class="muted">Compare the old gasket cross-section with the main image. If it is different, use a backup option or send a close-up profile photo before production.</p><div class="profile-alt-list">{alternate_profiles}</div></div></div>
+<div class="step-actions"><button type="button" data-confirm-step="#step-profile" data-strip="#strip-profile" data-next-step="#checkout-step">Profile is correct</button></div></section>
+<div class="step-strip flow-locked" id="strip-profile"><div><strong>Step 3 complete: gasket profile confirmed</strong><br><span>The selected gasket can move to checkout.</span></div><span class="step-score">100</span></div>
+<section class="flow-locked" id="checkout-step"><h2>Gasket quote</h2><form class="checkout-form" method="post" action="/checkout?product_id={esc(product['id'])}" data-product-id="{esc(product['id'])}"><input type="hidden" name="product_id" value="{esc(product['id'])}">{summary_html}<div>{rows_html}</div><div class="shipping-panel" data-shipping-panel><h3>Shipping information</h3><div class="shipping-grid"><label>Name<input data-required-check name="customer_name" autocomplete="name"></label><label>Phone<input data-required-check name="customer_phone" autocomplete="tel"></label><label>Email<input data-required-check type="email" name="customer_email" autocomplete="email"></label><label class="wide">Shipping address<input data-required-check data-address-autocomplete name="shipping_address1" placeholder="Shipping address" autocomplete="shipping street-address"></label><input type="hidden" name="shipping_address2" data-address-line2><input type="hidden" name="shipping_city" data-address-city><input type="hidden" name="shipping_state" data-address-state><input type="hidden" name="shipping_zip" data-address-zip><input type="hidden" name="shipping_country" value="United States" data-address-country></div></div><div class="checkout-actions"><button type="submit" data-checkout-button>Purchase selected gaskets</button></div><div class="checkout-error" data-checkout-error></div></form></section>
 <script>
 document.querySelectorAll('.checkout-form').forEach(form=>form.addEventListener('submit',async event=>{{
   if(!window.fetch)return;
