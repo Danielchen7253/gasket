@@ -85,7 +85,7 @@ Automatic reading is unavailable right now. The uploaded photo is saved; enter t
 <div><label>Active / discontinued status</label><input name="lifecycle_status" value="{esc(product.get('lifecycle_status') or '')}"></div>
 </div>
 <input type="hidden" name="raw_text" value="{esc(raw_text)}">
-<p><button type="submit">Confirm and match gasket records</button> <a class="button" href="/">Upload another</a></p>
+<p><button type="submit">Confirm as 100% and match gasket records</button> <a class="button" href="/">Upload another</a></p>
 </form></div></section>
 <div class="image-viewer" id="image-viewer" aria-hidden="true">
 <div class="image-viewer-tools"><button type="button" data-zoom="out">-</button><button type="button" data-zoom="in">+</button><button type="button" data-close-viewer>Close</button></div>
