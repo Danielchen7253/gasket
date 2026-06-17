@@ -48,6 +48,8 @@ def _patched_install(g):
         return ""
 
     def patched_render_confirm_nameplate(upload_url, customer, nameplate_data, fallback_brand="", fallback_model=""):
+        if "normalize_nameplate_data" in g:
+            nameplate_data = g["normalize_nameplate_data"](nameplate_data, fallback_brand, fallback_model)
         brand = nameplate_data.get("brand") or fallback_brand
         model = nameplate_data.get("model") or fallback_model
         product = _product_prefill(brand, model)
@@ -502,6 +504,8 @@ window.initShippingAutocomplete=function(){{
                         "confidence": 0,
                         "recognition_error": str(exc),
                     }
+            if "normalize_nameplate_data" in g:
+                nameplate_data = g["normalize_nameplate_data"](nameplate_data, brand, model)
             prefill_brand = nameplate_data.get("brand") or brand
             prefill_model = nameplate_data.get("model") or model
             if prefill_brand and prefill_model:
@@ -527,6 +531,8 @@ window.initShippingAutocomplete=function(){{
             "raw_text": fields.get("raw_text", {}).get("text") or "",
             "confidence": 100,
         }
+        if "normalize_nameplate_data" in g:
+            nameplate_data = g["normalize_nameplate_data"](nameplate_data, brand, model)
         nameplate_data["model"] = model or nameplate_data.get("model")
         if not brand or not model:
             self.send_html(g["render_confirm_nameplate"](upload_url or "", customer, nameplate_data, brand, model), HTTPStatus.BAD_REQUEST)
