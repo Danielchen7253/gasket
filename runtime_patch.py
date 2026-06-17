@@ -84,7 +84,28 @@ def _patched_install(g):
 <div class="image-viewer" id="image-viewer" aria-hidden="true">
 <div class="image-viewer-tools"><button type="button" data-zoom="out">-</button><button type="button" data-zoom="in">+</button><button type="button" data-close-viewer>Close</button></div>
 <div class="image-viewer-stage"><img id="image-viewer-img" alt="Nameplate enlarged"></div>
-</div>""")
+</div>
+<script>
+(() => {{
+  const form = document.querySelector('form[action="/match"]');
+  if (!form) return;
+  const raw = (form.querySelector('[name="raw_text"]')?.value || '').trim();
+  if (!raw) return;
+  const setIfEmpty = (name, value) => {{
+    const el = form.querySelector(`[name="${{name}}"]`);
+    if (el && !el.value.trim() && value) el.value = value;
+  }};
+  const model = raw.match(/\\bMODEL(?:\\s*(?:NO\\.?|NUMBER|#))?\\s*[:#]?\\s*([A-Z0-9][A-Z0-9./_-]{{2,}})\\b/i)?.[1];
+  const serial = raw.match(/\\bS\\s*\\/?\\s*N\\s*[:#]?\\s*([A-Z0-9][A-Z0-9./_-]{{2,}})\\b/i)?.[1]
+    || raw.match(/\\bSERIAL(?:\\s*(?:NO\\.?|NUMBER|#))?\\s*[:#]?\\s*([A-Z0-9][A-Z0-9./_-]{{2,}})\\b/i)?.[1];
+  const brands = ['Sub-Zero','Whirlpool','KitchenAid','Maytag','Frigidaire','GE','LG','Samsung','True','Turbo Air','Beverage-Air','Traulsen','Delfield','Hoshizaki','Arctic Air','Everest','Continental','Atosa','Migali'];
+  const upperRaw = raw.toUpperCase();
+  const brand = brands.find(item => upperRaw.includes(item.toUpperCase()));
+  setIfEmpty('brand', brand);
+  setIfEmpty('equipment_model', model);
+  setIfEmpty('serial_number', serial);
+}})();
+</script>""")
 
     def guide_model_number():
         return g["page"]("Find Model Number", f"""
