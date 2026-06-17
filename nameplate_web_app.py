@@ -508,115 +508,6 @@ def extract_json_object(value: str) -> dict:
             return {}
 
 
-KNOWN_NAMEPLATE_BRANDS = [
-    "Sub-Zero",
-    "Whirlpool",
-    "KitchenAid",
-    "Maytag",
-    "JennAir",
-    "Frigidaire",
-    "Electrolux",
-    "GE",
-    "General Electric",
-    "Hotpoint",
-    "LG",
-    "Samsung",
-    "Bosch",
-    "Thermador",
-    "Miele",
-    "Fisher & Paykel",
-    "Haier",
-    "True",
-    "True Manufacturing",
-    "Turbo Air",
-    "Beverage-Air",
-    "Traulsen",
-    "Delfield",
-    "Hoshizaki",
-    "Arctic Air",
-    "Everest",
-    "Continental",
-    "Atosa",
-    "Migali",
-]
-
-
-def first_present(data: dict, keys: tuple[str, ...]) -> str:
-    for key in keys:
-        value = data.get(key)
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    return ""
-
-
-def clean_nameplate_token(value: str) -> str:
-    value = (value or "").strip().strip(":#;,")
-    value = re.sub(r"^[^\w]+|[^\w./-]+$", "", value)
-    return value.strip()
-
-
-def extract_nameplate_model(raw_text: str) -> str:
-    text = raw_text or ""
-    patterns = [
-        r"\bMODEL(?:\s*(?:NO\.?|NUMBER|#))?\s*[:#]?\s*([A-Z0-9][A-Z0-9./_-]{2,})\b",
-        r"\bMOD(?:EL)?\s*[:#]?\s*([A-Z0-9][A-Z0-9./_-]{2,})\b",
-    ]
-    blocked = {"NO", "NUMBER", "AND", "SERIAL", "SERVICE", "GIVE", "PARTS"}
-    for pattern in patterns:
-        for match in re.finditer(pattern, text, re.I):
-            token = clean_nameplate_token(match.group(1).upper())
-            if token and token not in blocked:
-                return token
-    return ""
-
-
-def extract_nameplate_serial(raw_text: str) -> str:
-    text = raw_text or ""
-    patterns = [
-        r"\bS\s*/?\s*N\s*[:#]?\s*([A-Z0-9][A-Z0-9./_-]{2,})\b",
-        r"\bSERIAL(?:\s*(?:NO\.?|NUMBER|#))?\s*[:#]?\s*([A-Z0-9][A-Z0-9./_-]{2,})\b",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, re.I)
-        if match:
-            return clean_nameplate_token(match.group(1).upper())
-    return ""
-
-
-def extract_nameplate_brand(raw_text: str) -> str:
-    text = raw_text or ""
-    normalized = re.sub(r"[^A-Z0-9]+", " ", text.upper())
-    for brand in KNOWN_NAMEPLATE_BRANDS:
-        brand_key = re.sub(r"[^A-Z0-9]+", " ", brand.upper()).strip()
-        if re.search(rf"\b{re.escape(brand_key)}\b", normalized):
-            return brand
-    return ""
-
-
-def normalize_nameplate_data(data: dict | None, fallback_brand: str = "", fallback_model: str = "") -> dict:
-    data = dict(data or {})
-    raw_text = first_present(data, ("raw_text", "text", "output_text", "ocr_text", "full_text"))
-    brand = first_present(data, ("brand", "make", "manufacturer_brand", "product_brand")) or fallback_brand
-    model = first_present(data, ("model", "model_number", "model_no", "model_num", "equipment_model")) or fallback_model
-    serial = first_present(data, ("serial_number", "serial", "serial_no", "serial_num", "sn", "s_n"))
-
-    if not model:
-        model = extract_nameplate_model(raw_text)
-    if not serial:
-        serial = extract_nameplate_serial(raw_text)
-    if not brand:
-        brand = extract_nameplate_brand(raw_text)
-
-    if brand:
-        data["brand"] = brand
-    if model:
-        data["model"] = model
-    if serial:
-        data["serial_number"] = serial
-    data["raw_text"] = raw_text
-    return data
-
-
 def identify_nameplate(image_bytes: bytes, filename: str) -> dict:
     if not OPENAI_NAMEPLATE_API_KEY:
         raise RuntimeError("OpenAI key not configured")
@@ -663,11 +554,11 @@ def identify_nameplate(image_bytes: bytes, filename: str) -> dict:
         output_text = "\n".join(texts)
     parsed = extract_json_object(output_text or "")
     parsed.setdefault("raw_text", output_text or "")
-    return normalize_nameplate_data(parsed)
+    return parsed
 
 
 def fallback_nameplate_data(error: Exception | str, brand: str = "", model: str = "") -> dict:
-    return normalize_nameplate_data({
+    return {
         "brand": brand or None,
         "model": model or None,
         "serial_number": None,
@@ -678,7 +569,7 @@ def fallback_nameplate_data(error: Exception | str, brand: str = "", model: str 
         "raw_text": "",
         "confidence": 0,
         "recognition_error": str(error),
-    }, brand, model)
+    }
 
 
 def find_product(client: httpx.Client, brand: str, model: str) -> dict | None:
@@ -1851,7 +1742,6 @@ fetch('/public-stats', {{cache:'no-store'}}).then(r=>r.json()).then(data=>{{
 
 
 def render_confirm_nameplate(upload_url: str, customer: dict, nameplate_data: dict, fallback_brand: str = "", fallback_model: str = "") -> bytes:
-    nameplate_data = normalize_nameplate_data(nameplate_data, fallback_brand, fallback_model)
     brand = nameplate_data.get("brand") or fallback_brand
     model = nameplate_data.get("model") or fallback_model
     raw_text = nameplate_data.get("raw_text") or ""
