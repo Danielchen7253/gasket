@@ -37,7 +37,11 @@ def _patched_install(g):
             return {}
 
     def _model_check_notice():
-        return """<p class="muted">You can open the image to confirm the brand and model. This is important.</p>"""
+        return """
+<div class="model-check-notice">
+<strong>Important: confirm the model number exactly.</strong>
+AI can misread characters such as 8/S, 1/I, 0/O. The red model box must match the nameplate before you continue.
+</div>"""
 
     def _door_positions_text(product):
         positions = product.get("door_positions")
@@ -53,7 +57,11 @@ def _patched_install(g):
         product = _product_prefill(brand, model)
         raw_text = nameplate_data.get("raw_text") or ""
         recognition_error = nameplate_data.get("recognition_error")
-        recognition_notice = ""
+        recognition_notice = (
+            f"""<div class="model-check-notice"><strong>Please type the brand and model from the nameplate.</strong>
+Automatic reading is unavailable right now. The uploaded photo is saved; enter the exact brand and model, then continue matching.</div>"""
+            if recognition_error else ""
+        )
         return g["page"]("Confirm Nameplate", f"""
 <section><h2>Confirm refrigerator information</h2>
 <p>Check the nameplate and product information. Correct anything wrong before matching gasket records.</p>{recognition_notice}
@@ -64,7 +72,7 @@ def _patched_install(g):
 <input type="hidden" name="customer_email" value="{esc(customer.get('customer_email') or '')}">
 <input type="hidden" name="customer_phone" value="{esc(customer.get('customer_phone') or '')}">
 <div class="grid">
-<div><label>Brand</label><input class="model-confirm-input" name="brand" value="{esc(brand or product.get('brand') or '')}"></div>
+<div><label>Brand</label><input name="brand" value="{esc(brand or product.get('brand') or '')}"></div>
 <div><label>Model</label><input class="model-confirm-input" name="equipment_model" value="{esc(model or product.get('equipment_model') or '')}">{_model_check_notice()}<p><a class="button" href="/guide/model-number">How to find the model number</a></p></div>
 <div><label>Serial</label><input name="serial_number" value="{esc(nameplate_data.get('serial_number') or '')}"></div>
 <div><label>Manufacturer</label><input name="manufacturer" value="{esc(nameplate_data.get('manufacturer') or product.get('manufacturer') or '')}"></div>
@@ -77,7 +85,7 @@ def _patched_install(g):
 <div><label>Active / discontinued status</label><input name="lifecycle_status" value="{esc(product.get('lifecycle_status') or '')}"></div>
 </div>
 <input type="hidden" name="raw_text" value="{esc(raw_text)}">
-<p><button type="submit">Confirmed</button> <a class="button" href="/">Upload another</a></p>
+<p><button type="submit">Confirm as 100% and match gasket records</button> <a class="button" href="/">Upload another</a></p>
 </form></div></section>
 <div class="image-viewer" id="image-viewer" aria-hidden="true">
 <div class="image-viewer-tools"><button type="button" data-zoom="out">-</button><button type="button" data-zoom="in">+</button><button type="button" data-close-viewer>Close</button></div>
@@ -121,9 +129,9 @@ main{max-width:none;padding:0}
 .work-zone{display:flex;justify-content:center;align-items:flex-start}
 .work-panel{background:white;border:1px solid #dbe2ea;border-radius:8px;padding:22px;margin:0}
 .home-form{width:100%;background:#fff;border:1px solid #dbe2ea;border-radius:8px;padding:28px;margin:0}
-.model-confirm-input{border:2px solid #f2b544!important;background:#fffdf4!important;box-shadow:0 0 0 3px rgba(242,181,68,.18)}
-.model-check-notice{margin-top:8px;border:1px solid #f2b544;background:#fffdf4;color:#6b4a00;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}
-.model-check-notice strong{display:block;margin-bottom:4px;color:#4c3400}
+.model-confirm-input{border:2px solid #d93025!important;background:#fffafa!important;box-shadow:0 0 0 3px rgba(217,48,37,.12)}
+.model-check-notice{margin-top:8px;border:2px solid #d93025;background:#fff1f0;color:#5f1410;border-radius:8px;padding:10px;font-size:13px;line-height:1.4}
+.model-check-notice strong{display:block;margin-bottom:4px;color:#3b0906}
 .image-open{display:block;width:100%;padding:0;border:0;background:transparent;cursor:zoom-in}
 .image-viewer{position:fixed;inset:0;background:rgba(7,16,22,.88);display:none;z-index:9999}
 .image-viewer.is-open{display:block}
