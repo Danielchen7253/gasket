@@ -1,0 +1,778 @@
+{% comment %}
+  Nameplate Gasket Match
+  Shopify homepage section for refrigerator door gasket matching.
+  Front-end only: no Supabase keys or private credentials belong here.
+{% endcomment %}
+
+<section id="ngm-{{ section.id }}" class="ngm">
+  <div class="ngm__hero">
+    <div class="ngm__copy">
+      <p class="ngm__eyebrow">{{ section.settings.eyebrow }}</p>
+      <h1>{{ section.settings.heading }}</h1>
+      <p class="ngm__lead">{{ section.settings.subheading }}</p>
+      <div class="ngm__stats">
+        <div><strong>Confirm</strong><span>model, size, and profile</span></div>
+        <div><strong>Same day</strong><span>stock items can ship fast</span></div>
+        <div><strong>3-15 days</strong><span>typical custom gasket window</span></div>
+      </div>
+    </div>
+
+    <div class="ngm__panel" aria-label="Nameplate gasket matching form">
+      <div class="ngm__panel-head">
+        <h2>Find the right gasket</h2>
+        <p>Upload a nameplate or enter the brand and model. We help confirm the right gasket before payment.</p>
+      </div>
+
+      <div class="ngm__grid-2">
+        <label>
+          <span>Brand</span>
+          <input class="ngm-brand" type="text" placeholder="Continental, True, Traulsen" value="{{ section.settings.demo_brand }}">
+        </label>
+        <label>
+          <span>Model</span>
+          <input class="ngm-model" type="text" placeholder="D2R, T-49F-HC, BB48HC" value="{{ section.settings.demo_model }}">
+        </label>
+      </div>
+
+      <label class="ngm__upload">
+        <input class="ngm-file" type="file" accept="image/*">
+        <span class="ngm__upload-title">Upload nameplate photo</span>
+        <span class="ngm__upload-text">JPG, PNG, or HEIC from the job site</span>
+      </label>
+
+      <button type="button" class="ngm__button ngm-run">Find Matching Gasket</button>
+      <p class="ngm__note">Secure checkout is handled by Shopify. Uncertain models are reviewed before production.</p>
+    </div>
+  </div>
+
+  <div class="ngm__result" hidden>
+    <div class="ngm__result-head">
+      <div>
+        <p class="ngm__eyebrow">Matching result</p>
+        <h2 class="ngm-result-title">Matched refrigerator</h2>
+        <p class="ngm-result-note">Select the gaskets you want to purchase, then continue to Shopify checkout.</p>
+      </div>
+      <div class="ngm__status ngm-result-status">Candidate match</div>
+    </div>
+
+    <div class="ngm__result-layout">
+      <div class="ngm__product-card">
+        <img class="ngm-product-image" src="{{ section.settings.fallback_product_image }}" alt="Matched refrigerator image" loading="lazy">
+        <div class="ngm__facts">
+          <div><span>Brand</span><strong class="ngm-fact-brand">{{ section.settings.demo_brand }}</strong></div>
+          <div><span>Model</span><strong class="ngm-fact-model">{{ section.settings.demo_model }}</strong></div>
+          <div><span>Confidence</span><strong class="ngm-fact-confidence">Demo</strong></div>
+        </div>
+      </div>
+
+      <div class="ngm__cart-card">
+        <div class="ngm__table-wrap">
+          <table class="ngm__table">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Door</th>
+                <th>Size</th>
+                <th>Perimeter</th>
+                <th>Price</th>
+              </tr>
+            </thead>
+            <tbody class="ngm-door-rows"></tbody>
+          </table>
+        </div>
+
+        <div class="ngm__total">
+          <span>Total</span>
+          <strong class="ngm-total-price">$0</strong>
+        </div>
+
+        <button type="button" class="ngm__button ngm-checkout" disabled>Continue to checkout</button>
+        <button type="button" class="ngm__link-button ngm-reset">Start another match</button>
+        <p class="ngm__manual" hidden>One or more gaskets are outside the standard price tiers and need manual review.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="ngm__reviews">
+    <article>
+      <div class="ngm__stars">5.0 / 5</div>
+      <p>"We sent a nameplate photo and received a clear gasket recommendation before ordering."</p>
+      <strong>Commercial kitchen repair</strong>
+    </article>
+    <article>
+      <div class="ngm__stars">5.0 / 5</div>
+      <p>"The checkout process is simple because pricing is based on the gasket perimeter."</p>
+      <strong>Restaurant equipment dealer</strong>
+    </article>
+    <article>
+      <div class="ngm__stars">5.0 / 5</div>
+      <p>"Old models are easier to handle when the match is reviewed before production."</p>
+      <strong>Independent technician</strong>
+    </article>
+  </div>
+</section>
+
+<style>
+  #ngm-{{ section.id }} {
+    --ngm-ink: #17202a;
+    --ngm-muted: #627181;
+    --ngm-line: #d8e0e7;
+    --ngm-soft: #f3f6f8;
+    --ngm-accent: #0c766e;
+    --ngm-accent-dark: #095b55;
+    --ngm-steel: #263746;
+    color: var(--ngm-ink);
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  #ngm-{{ section.id }} * {
+    box-sizing: border-box;
+  }
+
+  #ngm-{{ section.id }} .ngm__hero {
+    min-height: 720px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 430px;
+    gap: 54px;
+    align-items: end;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 86px 24px 72px;
+  }
+
+  #ngm-{{ section.id }} {
+    background:
+      linear-gradient(90deg, rgba(12, 22, 34, 0.9) 0%, rgba(12, 22, 34, 0.76) 44%, rgba(12, 22, 34, 0.08) 100%),
+      url({{ section.settings.hero_image | image_url: width: 1500 }}) center right / contain no-repeat,
+      #e8edf1;
+  }
+
+  #ngm-{{ section.id }} .ngm__copy {
+    max-width: 660px;
+    color: #fff;
+  }
+
+  #ngm-{{ section.id }} .ngm__eyebrow {
+    margin: 0 0 14px;
+    color: #9be2d8;
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0;
+  }
+
+  #ngm-{{ section.id }} h1 {
+    margin: 0 0 18px;
+    color: #fff;
+    font-size: clamp(40px, 5vw, 64px);
+    line-height: 1.02;
+    letter-spacing: 0;
+  }
+
+  #ngm-{{ section.id }} .ngm__lead {
+    margin: 0 0 28px;
+    max-width: 600px;
+    color: #e6eef3;
+    font-size: 19px;
+  }
+
+  #ngm-{{ section.id }} .ngm__stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    max-width: 620px;
+  }
+
+  #ngm-{{ section.id }} .ngm__stats div {
+    border-top: 1px solid rgba(255, 255, 255, 0.24);
+    padding-top: 13px;
+  }
+
+  #ngm-{{ section.id }} .ngm__stats strong {
+    display: block;
+    color: #fff;
+    font-size: 24px;
+  }
+
+  #ngm-{{ section.id }} .ngm__stats span {
+    color: #cbd8df;
+    font-size: 13px;
+  }
+
+  #ngm-{{ section.id }} .ngm__panel,
+  #ngm-{{ section.id }} .ngm__cart-card,
+  #ngm-{{ section.id }} .ngm__product-card,
+  #ngm-{{ section.id }} .ngm__reviews article {
+    background: rgba(255, 255, 255, 0.97);
+    border: 1px solid rgba(255, 255, 255, 0.82);
+    border-radius: 8px;
+    box-shadow: 0 24px 55px rgba(7, 18, 30, 0.18);
+  }
+
+  #ngm-{{ section.id }} .ngm__panel {
+    padding: 24px;
+  }
+
+  #ngm-{{ section.id }} .ngm__panel h2,
+  #ngm-{{ section.id }} .ngm__result h2 {
+    margin: 0 0 8px;
+    color: var(--ngm-steel);
+    font-size: 26px;
+    line-height: 1.12;
+  }
+
+  #ngm-{{ section.id }} .ngm__panel p,
+  #ngm-{{ section.id }} .ngm-result-note,
+  #ngm-{{ section.id }} .ngm__note,
+  #ngm-{{ section.id }} .ngm__manual {
+    color: var(--ngm-muted);
+    font-size: 14px;
+  }
+
+  #ngm-{{ section.id }} .ngm__grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 18px 0 12px;
+  }
+
+  #ngm-{{ section.id }} label span {
+    display: block;
+    margin-bottom: 6px;
+    color: #465666;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  #ngm-{{ section.id }} input[type="text"] {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid #cfd9e2;
+    border-radius: 6px;
+    padding: 0 12px;
+    font: inherit;
+  }
+
+  #ngm-{{ section.id }} .ngm__upload {
+    min-height: 92px;
+    display: grid;
+    align-content: center;
+    margin: 12px 0;
+    padding: 16px;
+    border: 1px dashed #9aabb8;
+    border-radius: 8px;
+    background: #f7fafb;
+    cursor: pointer;
+  }
+
+  #ngm-{{ section.id }} .ngm__upload.active {
+    border-color: var(--ngm-accent);
+    background: #eefaf8;
+  }
+
+  #ngm-{{ section.id }} .ngm__upload input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #ngm-{{ section.id }} .ngm__upload-title {
+    color: var(--ngm-steel);
+    font-size: 15px;
+  }
+
+  #ngm-{{ section.id }} .ngm__upload-text {
+    color: var(--ngm-muted);
+    font-size: 13px;
+  }
+
+  #ngm-{{ section.id }} .ngm__button {
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid var(--ngm-accent);
+    border-radius: 6px;
+    background: var(--ngm-accent);
+    color: #fff;
+    font-weight: 800;
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  #ngm-{{ section.id }} .ngm__button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  #ngm-{{ section.id }} .ngm__link-button {
+    width: 100%;
+    min-height: 42px;
+    margin-top: 10px;
+    border: 0;
+    background: transparent;
+    color: var(--ngm-accent-dark);
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  #ngm-{{ section.id }} .ngm__result {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px 76px;
+  }
+
+  #ngm-{{ section.id }} .ngm__result-head {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 18px;
+    padding: 22px;
+    background: #fff;
+    border-radius: 8px;
+  }
+
+  #ngm-{{ section.id }} .ngm__result-head .ngm__eyebrow {
+    color: var(--ngm-accent);
+  }
+
+  #ngm-{{ section.id }} .ngm__status {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: #e8f7f4;
+    color: var(--ngm-accent-dark);
+    font-weight: 800;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  #ngm-{{ section.id }} .ngm__result-layout {
+    display: grid;
+    grid-template-columns: 0.86fr 1.14fr;
+    gap: 18px;
+  }
+
+  #ngm-{{ section.id }} .ngm__product-card {
+    overflow: hidden;
+  }
+
+  #ngm-{{ section.id }} .ngm__product-card img {
+    width: 100%;
+    height: 320px;
+    object-fit: contain;
+    background: #f6f8fa;
+    padding: 18px;
+    border-bottom: 1px solid var(--ngm-line);
+  }
+
+  #ngm-{{ section.id }} .ngm__facts {
+    padding: 18px;
+    display: grid;
+    gap: 10px;
+  }
+
+  #ngm-{{ section.id }} .ngm__facts div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    color: var(--ngm-muted);
+    border-top: 1px solid #edf1f4;
+    padding-top: 10px;
+  }
+
+  #ngm-{{ section.id }} .ngm__facts strong {
+    color: var(--ngm-steel);
+    text-align: right;
+  }
+
+  #ngm-{{ section.id }} .ngm__cart-card {
+    padding: 18px;
+  }
+
+  #ngm-{{ section.id }} .ngm__table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--ngm-line);
+    border-radius: 8px;
+  }
+
+  #ngm-{{ section.id }} .ngm__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    background: #fff;
+  }
+
+  #ngm-{{ section.id }} .ngm__table th,
+  #ngm-{{ section.id }} .ngm__table td {
+    padding: 12px 10px;
+    border-top: 1px solid #edf1f4;
+    text-align: left;
+    color: #4b5d6b;
+    vertical-align: top;
+  }
+
+  #ngm-{{ section.id }} .ngm__table th {
+    border-top: 0;
+    color: var(--ngm-steel);
+    font-size: 12px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  #ngm-{{ section.id }} .ngm__table input {
+    width: 18px;
+    height: 18px;
+  }
+
+  #ngm-{{ section.id }} .ngm__total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 16px 0;
+    padding: 14px 0;
+    border-top: 1px solid var(--ngm-line);
+    border-bottom: 1px solid var(--ngm-line);
+    color: var(--ngm-steel);
+  }
+
+  #ngm-{{ section.id }} .ngm__total strong {
+    font-size: 24px;
+  }
+
+  #ngm-{{ section.id }} .ngm__manual {
+    padding: 12px;
+    border: 1px solid #efd6aa;
+    border-radius: 8px;
+    background: #fff7ea;
+    color: #8a5a13;
+  }
+
+  #ngm-{{ section.id }} .ngm__reviews {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px 78px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  #ngm-{{ section.id }} .ngm__reviews article {
+    padding: 22px;
+  }
+
+  #ngm-{{ section.id }} .ngm__reviews p {
+    margin: 10px 0 14px;
+    color: var(--ngm-steel);
+    font-size: 16px;
+  }
+
+  #ngm-{{ section.id }} .ngm__reviews strong {
+    color: var(--ngm-muted);
+    font-size: 13px;
+  }
+
+  #ngm-{{ section.id }} .ngm__stars {
+    color: #b7791f;
+    letter-spacing: 0;
+  }
+
+  @media (max-width: 940px) {
+    #ngm-{{ section.id }} {
+      background:
+        linear-gradient(180deg, rgba(12, 22, 34, 0.9) 0%, rgba(12, 22, 34, 0.74) 54%, rgba(12, 22, 34, 0.35) 100%),
+        url({{ section.settings.hero_image | image_url: width: 1000 }}) center bottom / contain no-repeat,
+        #e8edf1;
+    }
+
+    #ngm-{{ section.id }} .ngm__hero,
+    #ngm-{{ section.id }} .ngm__result-layout,
+    #ngm-{{ section.id }} .ngm__reviews {
+      grid-template-columns: 1fr;
+    }
+
+    #ngm-{{ section.id }} .ngm__hero {
+      padding-top: 56px;
+    }
+
+    #ngm-{{ section.id }} .ngm__result-head {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+
+  @media (max-width: 560px) {
+    #ngm-{{ section.id }} .ngm__hero,
+    #ngm-{{ section.id }} .ngm__result,
+    #ngm-{{ section.id }} .ngm__reviews {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+
+    #ngm-{{ section.id }} .ngm__grid-2,
+    #ngm-{{ section.id }} .ngm__stats {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<script>
+  (() => {
+    const root = document.getElementById("ngm-{{ section.id }}");
+    const settings = {
+      apiEndpoint: {{ section.settings.api_endpoint | json }},
+      shopDomain: {{ section.settings.shop_domain | json }},
+      fallbackImage: {{ section.settings.fallback_product_image | json }},
+      tiers: [
+        { max: 98, price: 45, variantId: {{ section.settings.variant_under_98 | json }}, label: "Up to 98 in" },
+        { max: 117, price: 68, variantId: {{ section.settings.variant_under_117 | json }}, label: "Up to 117 in" },
+        { max: 146, price: 90, variantId: {{ section.settings.variant_under_146 | json }}, label: "Up to 146 in" },
+        { max: 190, price: 120, variantId: {{ section.settings.variant_under_190 | json }}, label: "Up to 190 in" }
+      ]
+    };
+
+    const demoDoors = [
+      { door_position: "Main door", width_in: 29.25, height_in: 67, dimensions_text: "29.25 x 67", confidence_score: 86 },
+      { door_position: "Second door", width_in: 24, height_in: 48, dimensions_text: "24 x 48", confidence_score: 82 }
+    ];
+
+    const $ = (selector) => root.querySelector(selector);
+
+    function tierForDoor(door) {
+      const width = Number(door.width_in || 0);
+      const height = Number(door.height_in || 0);
+      const perimeter = width && height ? (width + height) * 2 : null;
+      if (!perimeter) return { perimeter: null, tier: null };
+      return { perimeter, tier: settings.tiers.find((tier) => perimeter <= tier.max) || null };
+    }
+
+    function money(value) {
+      return `$${Number(value || 0).toFixed(0)}`;
+    }
+
+    function safeText(value, fallback = "") {
+      return value === null || value === undefined || value === "" ? fallback : String(value);
+    }
+
+    function renderResult(data) {
+      const brand = safeText(data.brand, $(".ngm-brand").value || "Matched Brand");
+      const model = safeText(data.model || data.equipment_model, $(".ngm-model").value || "Matched Model");
+      const doors = Array.isArray(data.doors) && data.doors.length ? data.doors : demoDoors;
+      const image = data.product_image_url || settings.fallbackImage;
+      const confidence = data.confidence_score || data.confidence || 86;
+
+      $(".ngm-result-title").textContent = `${brand} ${model}`;
+      $(".ngm-fact-brand").textContent = brand;
+      $(".ngm-fact-model").textContent = model;
+      $(".ngm-fact-confidence").textContent = `${confidence}%`;
+      $(".ngm-product-image").src = image;
+      $(".ngm-result-status").textContent = confidence >= 85 ? "Strong candidate" : "Needs review";
+
+      const tbody = $(".ngm-door-rows");
+      tbody.innerHTML = "";
+      doors.forEach((door, index) => {
+        const { perimeter, tier } = tierForDoor(door);
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td><input type="checkbox" class="ngm-door-check" data-index="${index}" ${tier ? "checked" : "disabled"}></td>
+          <td>${safeText(door.door_position, `Door ${index + 1}`)}</td>
+          <td>${safeText(door.dimensions_text, `${safeText(door.width_in, "?")} x ${safeText(door.height_in, "?")}`)}</td>
+          <td>${perimeter ? `${perimeter.toFixed(1)} in` : "Needs review"}</td>
+          <td>${tier ? `${money(tier.price)} ${tier.label}` : "Manual quote"}</td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      root._ngmDoors = doors;
+      $(".ngm__result").hidden = false;
+      updateTotal();
+      $(".ngm__result").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function selectedCartItems() {
+      const counts = new Map();
+      const checks = Array.from(root.querySelectorAll(".ngm-door-check"));
+      checks.forEach((check) => {
+        if (!check.checked || check.disabled) return;
+        const door = root._ngmDoors[Number(check.dataset.index)];
+        const { tier } = tierForDoor(door);
+        if (!tier || !tier.variantId) return;
+        counts.set(tier.variantId, (counts.get(tier.variantId) || 0) + 1);
+      });
+      return Array.from(counts.entries()).map(([variantId, quantity]) => ({ variantId, quantity }));
+    }
+
+    function updateTotal() {
+      let total = 0;
+      let manual = false;
+      const checks = Array.from(root.querySelectorAll(".ngm-door-check"));
+      checks.forEach((check) => {
+        const door = root._ngmDoors[Number(check.dataset.index)];
+        const { tier } = tierForDoor(door);
+        if (!tier) manual = true;
+        if (check.checked && tier) total += tier.price;
+      });
+      $(".ngm-total-price").textContent = money(total);
+      $(".ngm__manual").hidden = !manual;
+      $(".ngm-checkout").disabled = selectedCartItems().length === 0;
+    }
+
+    async function runMatch() {
+      const brand = $(".ngm-brand").value.trim();
+      const model = $(".ngm-model").value.trim();
+      const file = $(".ngm-file").files[0];
+
+      $(".ngm-run").textContent = "Matching...";
+      $(".ngm-run").disabled = true;
+
+      try {
+        if (settings.apiEndpoint) {
+          const form = new FormData();
+          form.append("brand", brand);
+          form.append("model", model);
+          if (file) form.append("nameplate", file);
+          const response = await fetch(settings.apiEndpoint, { method: "POST", body: form });
+          if (!response.ok) throw new Error("Match API failed");
+          renderResult(await response.json());
+        } else {
+          renderResult({
+            brand,
+            model,
+            product_image_url: settings.fallbackImage,
+            confidence_score: 86,
+            doors: demoDoors
+          });
+        }
+      } catch (error) {
+        renderResult({
+          brand,
+          model,
+          product_image_url: settings.fallbackImage,
+          confidence_score: 58,
+          doors: [{ door_position: "Review needed", dimensions_text: "Manual quote", confidence_score: 58 }]
+        });
+      } finally {
+        $(".ngm-run").textContent = "Match gasket";
+        $(".ngm-run").disabled = false;
+      }
+    }
+
+    $(".ngm-run").addEventListener("click", runMatch);
+    $(".ngm-door-rows").addEventListener("change", updateTotal);
+    $(".ngm-reset").addEventListener("click", () => {
+      $(".ngm__result").hidden = true;
+      window.scrollTo({ top: root.offsetTop, behavior: "smooth" });
+    });
+
+    $(".ngm-file").addEventListener("change", () => {
+      const file = $(".ngm-file").files[0];
+      if (!file) return;
+      $(".ngm__upload").classList.add("active");
+      $(".ngm__upload-text").textContent = file.name;
+    });
+
+    $(".ngm-checkout").addEventListener("click", () => {
+      const items = selectedCartItems();
+      if (!items.length) return;
+      const cartPath = `/cart/${items.map((item) => `${item.variantId}:${item.quantity}`).join(",")}`;
+      window.location.href = settings.shopDomain ? `https://${settings.shopDomain}${cartPath}` : cartPath;
+    });
+  })();
+</script>
+
+<script src="https://crm-8t7y.onrender.com/chat/widget.js"></script>
+
+{% schema %}
+{
+  "name": "Nameplate gasket match",
+  "tag": "section",
+  "class": "section-nameplate-gasket-match",
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "Commercial Refrigerator Door Gaskets"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Find the Right Refrigerator Door Gasket Fast"
+    },
+    {
+      "type": "textarea",
+      "id": "subheading",
+      "label": "Subheading",
+      "default": "Upload a nameplate photo or enter your refrigerator model. We help confirm the correct gasket before customers pay."
+    },
+    {
+      "type": "text",
+      "id": "stat_one",
+      "label": "Model count text",
+      "default": "2,000+"
+    },
+    {
+      "type": "image_picker",
+      "id": "hero_image",
+      "label": "Hero refrigerator image"
+    },
+    {
+      "type": "url",
+      "id": "fallback_product_image",
+      "label": "Fallback product image URL"
+    },
+    {
+      "type": "text",
+      "id": "demo_brand",
+      "label": "Demo brand",
+      "default": "Continental"
+    },
+    {
+      "type": "text",
+      "id": "demo_model",
+      "label": "Demo model",
+      "default": "D2R"
+    },
+    {
+      "type": "url",
+      "id": "api_endpoint",
+      "label": "Match API endpoint"
+    },
+    {
+      "type": "text",
+      "id": "shop_domain",
+      "label": "Shop domain for checkout",
+      "info": "Example: your-store.myshopify.com. Leave blank to use current shop domain."
+    },
+    {
+      "type": "text",
+      "id": "variant_under_98",
+      "label": "Variant ID: gasket under 98 in / $45"
+    },
+    {
+      "type": "text",
+      "id": "variant_under_117",
+      "label": "Variant ID: gasket under 117 in / $68"
+    },
+    {
+      "type": "text",
+      "id": "variant_under_146",
+      "label": "Variant ID: gasket under 146 in / $90"
+    },
+    {
+      "type": "text",
+      "id": "variant_under_190",
+      "label": "Variant ID: gasket under 190 in / $120"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Nameplate gasket match"
+    }
+  ]
+}
+{% endschema %}

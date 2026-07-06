@@ -1,0 +1,68 @@
+brand,url,segment,parts_site,parts_url
+Whirlpool,https://www.whirlpool.com/kitchen/refrigeration.html,residential,Whirlpool Parts,https://www.whirlpoolparts.com/
+GE Appliances,https://www.geappliances.com/ge-appliances/kitchen/refrigerators/,residential,GE Appliances Parts,https://www.geapplianceparts.com/store/
+LG,https://www.lg.com/us/refrigerators,residential,LG Parts,https://lgparts.com/
+Samsung,https://www.samsung.com/us/refrigerators/,residential,Samsung Parts,https://www.samsungparts.com/
+Frigidaire,https://www.frigidaire.com/en/kitchen-appliances/refrigerators,residential,Frigidaire Parts,https://www.frigidaireapplianceparts.com/
+KitchenAid,https://www.kitchenaid.com/major-appliances/refrigeration.html,residential,KitchenAid Parts,https://www.kitchenaidparts.com/
+Maytag,https://www.maytag.com/kitchen/refrigerators.html,residential,Maytag Replacement Parts,https://www.maytagreplacementparts.com/
+Amana,https://www.amana.com/kitchen/refrigerators.html,residential,Amana Replacement Parts,https://www.amanaparts.com/
+Hotpoint,https://www.hotpoint.com/refrigeration/,residential,GE Appliances Parts,https://www.geapplianceparts.com/store/
+Bosch,https://www.bosch-home.com/us/productslist/refrigerators,residential,Bosch Parts,https://www.bosch-home.com/us/owner-support/cleaners-accessories/spare-parts
+Cafe,https://www.cafeappliances.com/appliances/refrigerators/,residential,GE Appliances Parts,https://www.geapplianceparts.com/store/
+GE Profile,https://www.geappliances.com/ge-appliances/kitchen/refrigerators/,residential,GE Appliances Parts,https://www.geapplianceparts.com/store/
+Haier,https://www.haierappliances.com/appliances/refrigerators/,residential,GE Appliances Parts,https://www.geapplianceparts.com/store/
+Hisense,https://www.hisense-usa.com/home-appliance/refrigerators,residential,Hisense Parts,https://encompass.com/brand/HIS/Hisense
+Midea,https://www.midea.com/us/refrigerators,residential,Midea Parts,https://encompass.com/brand/MID/Midea
+Kenmore,https://www.kenmore.com/products/refrigerators/,residential,Sears PartsDirect,https://www.searspartsdirect.com/combo/0582-1234595/kenmore-refrigerator-parts
+Sub-Zero,https://www.subzero-wolf.com/sub-zero/full-size-refrigeration,residential_luxury,Sub-Zero Parts,https://www.subzero-wolf.com/assistance/parts
+Thermador,https://www.thermador.com/us/products/refrigeration,residential_luxury,Thermador Parts,https://www.thermador.com/us/support/parts-cleaners-accessories
+Fisher & Paykel,https://www.fisherpaykel.com/us/cooling/,residential_luxury,Fisher & Paykel Parts,https://www.fisherpaykel.com/us/support/spare-parts/
+Liebherr,https://home.liebherr.com/en/usa/ncsa/residential-appliances/household-appliances.html,residential_luxury,Liebherr Spare Parts,https://home.liebherr.com/en/usa/ncsa/service/spare-parts/spare-parts.html
+Miele,https://www.mieleusa.com/e/refrigeration-and-wine-units-1014427-c,residential_luxury,Miele Parts and Accessories,https://www.mieleusa.com/c/parts-and-accessories-29.htm
+JennAir,https://www.jennair.com/refrigeration.html,residential_luxury,JennAir Parts,https://www.jennair.com/parts.html
+Monogram,https://www.monogram.com/refrigeration/,residential_luxury,GE Appliances Parts,https://www.geapplianceparts.com/store/
+Smeg,https://www.smegusa.com/refrigerators,residential_luxury,Encompass,https://encompass.com/brand/SMG/Smeg
+Summit,https://www.summitappliance.com/catalog/refrigeration,residential, Summit Replacement Parts,https://www.summitappliance.com/support/replacement-parts
+Avanti,https://www.avantiproducts.com/refrigeration/,residential,Avanti Parts,https://www.avantiproducts.com/parts-accessories/
+U-Line,https://www.u-line.com/refrigeration,residential_luxury,U-Line Parts,https://www.u-line.com/parts
+Marvel,https://marvelrefrigeration.com/collections/refrigeration,residential_luxury,Marvel Parts and Service,https://marvelrefrigeration.com/pages/parts-and-service
+Electrolux,https://www.electrolux.com/en/kitchen-appliances/refrigerators,residential,Electrolux Parts,https://www.electroluxappliances.com/Owner-Support/Parts/
+Blomberg,https://www.blombergappliances.com/products/refrigerators/,residential,Blomberg Support,https://www.blombergappliances.com/support/
+XO,https://xoappliance.com/refrigeration/,residential_luxury,XO Service and Support,https://xoappliance.com/service-and-support/
+Zephyr,https://zephyronline.com/product-category/refrigeration/,residential_luxury,Zephyr Support,https://zephyronline.com/support/
+Viking,https://www.vikingrange.com/consumer/category/products/refrigeration,residential_luxury,All Viking Parts,https://www.allvikingparts.com/
+Dacor,https://www.dacor.com/us/products/refrigerators,residential_luxury,Samsung Parts,https://www.samsungparts.com/
+Beko,https://www.beko.com/us-en/products/refrigerators,residential,Beko Support,https://www.beko.com/us-en/support
+Forno,https://forno.ca/refrigerators/,residential,Forno Parts,https://forno.ca/pages/parts
+THOR Kitchen,https://thorkitchen.com/refrigeration/,residential,THOR Kitchen Parts,https://thorkitchen.com/parts/
+Insignia,https://www.bestbuy.com/site/insignia/refrigerators/pcmcat1603316133856.c?id=pcmcat1603316133856,residential,Encompass Best Buy Parts,https://partstore.encompass.com/
+Magic Chef,https://mcappliance.com/refrigeration/,residential,Magic Chef Parts,https://mcappliance.com/parts-accessories/
+True,https://www.truemfg.com/products/,commercial,True Parts,https://www.truemfg.com/support/parts/
+Hoshizaki,https://www.hoshizakiamerica.com/product-category/r/r-u/,commercial,Parts Town,https://www.partstown.com/hoshizaki/parts
+Traulsen,https://www.traulsen.com/products/refrigerators-freezers,commercial,Parts Town,https://www.partstown.com/traulsen/parts
+Beverage-Air,https://beverage-air.com/refrigeration/,commercial,Parts Town,https://www.partstown.com/beverage-air/parts
+Turbo Air,https://www.turboairinc.com/refrigeration/,commercial,Parts Town,https://www.partstown.com/turbo-air/parts
+Continental Refrigerator,https://www.continentalrefrigerator.com/refrigerators/,commercial,Parts Town,https://www.partstown.com/continental-refrigerator/parts
+Delfield,https://www.delfield.com/products/refrigeration,commercial,Parts Town,https://www.partstown.com/delfield/parts
+Randell,https://randell.com/products/refrigeration/,commercial,Parts Town,https://www.partstown.com/randell/parts
+Nor-Lake,https://www.norlake.com/products/,commercial,Parts Town,https://www.partstown.com/nor-lake/parts
+Arctic Air,https://www.arcticairco.com/,commercial,Parts Town,https://www.partstown.com/arctic-air/parts
+Atosa,https://www.atosausa.com/refrigeration/,commercial,Parts Town,https://www.partstown.com/atosa/parts
+Victory,https://www.victoryrefrigeration.com/,commercial,Parts Town,https://www.partstown.com/victory/parts
+Perlick,https://www.perlick.com/commercial/products/refrigeration/,commercial,Parts Town,https://www.partstown.com/perlick/parts
+Master-Bilt,https://www.master-bilt.com/products/,commercial,Parts Town,https://www.partstown.com/master-bilt/parts
+Avantco,https://www.avantcoequipment.com/refrigeration.html,commercial,WebstaurantStore,https://www.webstaurantstore.com/vendor/avantco-refrigeration.html
+Maxx Cold,https://www.maxximumfoodservice.com/maxx-cold/,commercial,Parts Town,https://www.partstown.com/maxx-cold/parts
+Migali,https://migalicommercial.com/refrigeration/,commercial,Parts Town,https://www.partstown.com/migali/parts
+Everest,https://everestref.com/refrigeration/,commercial,Parts Town,https://www.partstown.com/everest/parts
+Koolmore,https://www.koolmore.com/collections/commercial-refrigeration,commercial,Parts Town,https://www.partstown.com/koolmore/parts
+MoTak,https://www.katom.com/cat/motak-refrigeration.html,commercial,KaTom,https://www.katom.com/cat/motak-refrigeration.html
+Glastender,https://www.glastender.com/products/refrigeration/,commercial,Parts Town,https://www.partstown.com/glastender/parts
+Kairak,https://kairak.com/refrigeration/,commercial,Parts Town,https://www.partstown.com/kairak/parts
+Kolpak,https://www.kolpak.com/products/walk-in-coolers-freezers/,commercial,Parts Town,https://www.partstown.com/kolpak/parts
+Bally Refrigerated Boxes,https://www.ballyrefboxes.com/,commercial,Parts Town,https://www.partstown.com/bally/parts
+American Panel,https://americanpanel.com/walk-in-coolers-freezers/,commercial,Parts Town,https://www.partstown.com/american-panel/parts
+Thermo-Kool,https://thermokool.com/,commercial,Parts Town,https://www.partstown.com/thermo-kool/parts
+Vollrath,https://www.vollrathfoodservice.com/products/foodservice-equipment/refrigeration/,commercial,Parts Town,https://www.partstown.com/vollrath/parts
+Silver King,https://www.silverking.com/products/,commercial,Parts Town,https://www.partstown.com/silver-king/parts

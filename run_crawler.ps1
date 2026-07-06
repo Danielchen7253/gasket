@@ -1,0 +1,15 @@
+$ErrorActionPreference = "Stop"
+
+Write-Host ""
+Write-Host "run_crawler.ps1 is archived and removed from the main workflow."
+Write-Host "This script was the legacy model importer and should not be used for normal operations."
+Write-Host ""
+Write-Host "Use one of the active scripts:"
+Write-Host "  - run_market_discovery.ps1"
+Write-Host "  - run_product_image_search.ps1"
+Write-Host "  - run_gasket_enrichment.ps1"
+Write-Host "  - run_product_metadata_enrichment.ps1"
+Write-Host ""
+Write-Host "Archived file: archived\\run_crawler.ps1"
+Write-Host ""
+exit 1

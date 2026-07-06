@@ -1,0 +1,1128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>查询结果</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef1f4;
+      --panel: #fff;
+      --text: #171a1f;
+      --muted: #68707c;
+      --line: #d8dee7;
+      --line-soft: #edf0f4;
+      --accent: #0b6bcb;
+      --accent-dark: #084b91;
+      --accent-weak: #e8f2ff;
+      --warn: #9a3412;
+      --success: #0f766e;
+      --shadow: 0 14px 36px rgba(17, 24, 39, .08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.45;
+    }
+    header {
+      background: #111827;
+      color: white;
+      padding: 18px 28px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    header h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0; }
+    header p { margin: 4px 0 0; color: #cbd5e1; font-size: 13px; }
+    main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 18px;
+      box-shadow: var(--shadow);
+    }
+    h2 { margin: 0 0 14px; font-size: 17px; }
+    h3 { margin: 0 0 10px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .result-grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 18px; align-items: start; }
+    .product-grid { display: grid; grid-template-columns: minmax(320px, 1fr) 220px minmax(280px, .9fr); gap: 18px; align-items: start; }
+    .stack { display: grid; gap: 18px; }
+    label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+    input, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 11px;
+      font: inherit;
+      background: white;
+    }
+    textarea { min-height: 84px; resize: vertical; }
+    button, .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--accent);
+      color: white;
+      padding: 0 16px;
+      font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    button:hover, .button:hover { background: var(--accent-dark); }
+    .secondary { background: #374151; }
+    .ghost { background: white; color: var(--text); border: 1px solid var(--line); }
+    .ghost:hover { background: #f8fafc; }
+    .muted { color: var(--muted); }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 9px;
+      background: var(--accent-weak);
+      color: #084b91;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .pill.success { background: #e7f7ef; color: var(--success); }
+    .warning { color: var(--warn); }
+    table { width: 100%; border-collapse: collapse; background: white; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    th, td { border-top: 1px solid var(--line-soft); padding: 12px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; font-weight: 800; background: #f8fafc; text-transform: uppercase; letter-spacing: .04em; }
+    tr:first-child td { border-top: 0; }
+    .preview { width: 100%; max-height: 360px; border: 1px solid var(--line); border-radius: 8px; object-fit: contain; background: #fafafa; }
+    .hero-image { width: 100%; height: 360px; border: 1px solid var(--line); border-radius: 8px; object-fit: contain; background: #f8fafc; }
+    .nameplate-image { width: 100%; height: 180px; border: 1px solid var(--line); border-radius: 8px; object-fit: contain; background: #f8fafc; }
+    .thumb { width: 72px; height: 72px; border-radius: 6px; border: 1px solid var(--line); object-fit: contain; background: #fafafa; }
+    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+    .kv { display: grid; grid-template-columns: 180px 1fr; gap: 8px 14px; }
+    .kv div:nth-child(odd) { color: var(--muted); }
+    .metric-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .metric { border: 1px solid var(--line); background: #fbfcfe; border-radius: 8px; padding: 12px; }
+    .metric span { color: var(--muted); font-size: 12px; display: block; margin-bottom: 5px; }
+    .metric strong { font-size: 20px; }
+    .best-card { border: 1px solid #b8d7ff; background: #f7fbff; border-radius: 8px; padding: 16px; }
+    .best-title { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 12px; }
+    .best-title strong { font-size: 18px; }
+    .source-link { color: var(--accent); font-weight: 700; text-decoration: none; }
+    details {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-bottom: 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-weight: 800;
+      background: #fbfcfe;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "收起"; color: var(--muted); font-size: 13px; font-weight: 700; }
+    details:not([open]) summary::after { content: "展开"; }
+    .details-body { padding: 20px; }
+    .print-tools {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: rgba(238,241,244,.92);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 18px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      box-shadow: var(--shadow);
+    }
+    .info-card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fbfcfe; }
+    .form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    @media print {
+      header, .print-tools, .no-print { display: none !important; }
+      @page { size: A4; margin: 10mm; }
+      * { box-shadow: none !important; }
+      body {
+        background: white;
+        font-size: 10.5px;
+        line-height: 1.25;
+        color: #111;
+      }
+      main { max-width: none; padding: 0; }
+      section, details {
+        box-shadow: none;
+        border: 1px solid #d7dce3;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        break-inside: avoid;
+      }
+      section { padding: 8px; }
+      details:not([open]) { display: none; }
+      summary {
+        padding: 7px 9px;
+        border-bottom: 1px solid #ddd;
+        background: #f6f7f9;
+        font-size: 12px;
+      }
+      summary::after { display: none; }
+      .button, button { display: none; }
+      h2 { font-size: 14px; margin-bottom: 7px; }
+      h3 { font-size: 10px; margin-bottom: 5px; }
+      .details-body { padding: 8px; }
+      .product-grid {
+        grid-template-columns: 1.1fr .8fr 1.2fr;
+        gap: 8px;
+      }
+      .hero-image {
+        height: 135px;
+        border-radius: 4px;
+      }
+      .nameplate-image {
+        height: 135px;
+        border-radius: 4px;
+      }
+      .kv {
+        grid-template-columns: 70px 1fr;
+        gap: 3px 7px;
+      }
+      .info-card {
+        padding: 8px;
+        border-radius: 4px;
+      }
+      .best-card {
+        padding: 8px;
+        border-radius: 4px;
+      }
+      .best-title {
+        margin-bottom: 6px;
+      }
+      .best-title strong {
+        font-size: 15px;
+      }
+      .metric-row {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 5px;
+      }
+      .metric {
+        padding: 6px;
+        border-radius: 4px;
+      }
+      .metric span {
+        font-size: 9px;
+        margin-bottom: 2px;
+      }
+      .metric strong {
+        font-size: 13px;
+      }
+      table {
+        font-size: 9px;
+        border-radius: 4px;
+      }
+      th, td {
+        padding: 5px 6px;
+      }
+      th:nth-child(2), td:nth-child(2),
+      th:nth-child(6), td:nth-child(6),
+      th:nth-child(7), td:nth-child(7) {
+        display: none;
+      }
+      tbody tr:nth-child(n+4) {
+        display: none;
+      }
+      .thumb {
+        width: 36px;
+        height: 36px;
+      }
+      input, textarea {
+        border: 0;
+        padding: 0;
+        min-height: 0;
+        font-size: 10px;
+      }
+      textarea {
+        min-height: 24px;
+      }
+      .form-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+      .muted {
+        font-size: 9px;
+      }
+      .pill {
+        padding: 1px 5px;
+        font-size: 9px;
+      }
+    }
+    @media (max-width: 760px) {
+      main { padding: 14px; }
+      .grid, .result-grid, .product-grid, .metric-row, .form-grid { grid-template-columns: 1fr; }
+      .kv { grid-template-columns: 1fr; }
+      th, td { font-size: 13px; }
+    }
+  </style>
+</head>
+<body><div style="max-width:1100px;margin:20px auto 0;padding:0 24px;color:#68707c;font:14px system-ui">??????????????????????????? product_image_url?</div>
+  <header><h1>铭牌查询工作台</h1><p>上传铭牌，匹配产品资料，准备客户确认与工厂加工文件</p></header>
+  <main>
+<div class="actions no-print" style="justify-content:space-between;margin:0 0 18px">
+  <div>
+    <h2 style="margin-bottom:4px">查询结果</h2>
+    <span class="pill">preview</span>
+    <span class="muted">工单 ID：PREVIEW-23 / 产品 ID：23</span>
+  </div>
+  <a class="button secondary" href="/">继续上传</a>
+</div>
+<section>
+  <h2>冰箱信息</h2>
+  <div class="product-grid">
+    <div>
+      <h3>冰箱产品图片</h3>
+      <img class='hero-image' src='https://www.cookeronlineshop.com/wp-content/uploads/2024/04/ABB48_1200x1200.jpg' alt='冰箱产品图片'>
+    </div>
+    <div>
+      <h3>客户铭牌照片</h3>
+      
+      <p class="muted">原始铭牌用于客户确认和内部核对。</p>
+    </div>
+    <div class="info-card">
+      <h3>基本信息</h3>
+      <div class="kv">
+        <div>品牌</div><div><strong>Arctic Air</strong></div>
+        <div>型号</div><div><strong>ABB48</strong></div>
+        <div>生产厂家</div><div></div>
+        <div>生产日期</div><div></div>
+        <div>序列号</div><div></div>
+        <div>资料状态</div><div>enriched</div>
+      </div>
+    </div>
+  </div>
+</section>
+<details open>
+  <summary>第二部分：密封条信息</summary>
+  <div class="details-body">
+    <h3>推荐门封条</h3>
+      
+        <div class="best-card">
+          <div class="best-title">
+            <div>
+              <span class="pill success">推荐候选</span> <span class='pill'>待确认</span>
+              <div style="height:8px"></div>
+              <strong>29 3/4 X 66 1/2</strong>
+              <div class="muted">Arctic Air Abb48 Refrigerator Door Gasket - WebstaurantStore</div>
+            </div>
+            <span class="pill">85.0</span>
+          </div>
+          <div class="metric-row">
+            <div class="metric"><span>宽度</span><strong>29.75</strong></div>
+            <div class="metric"><span>高度</span><strong>66.5</strong></div>
+            <div class="metric"><span>Part No.</span><strong>ners</strong></div>
+          </div>
+          <div class="actions">
+            <a class="button ghost" target="_blank" href="https://www.webstaurantstore.com/search/Arctic+Air+ABB48+refrigerator+door+gasket.html">查看来源</a>
+            <button type="button">生成客户确认 PDF</button>
+            <button type="button" class="secondary">生成工厂加工单</button>
+            <form method="post" action="/verify" style="display:inline-flex;margin:0">
+              <input type="hidden" name="product_id" value="23">
+              <input type="hidden" name="gasket_detail_id" value="40">
+              <input type="hidden" name="request_id" value="PREVIEW-23">
+              <button type="submit" class="secondary">安装成功，确认此资料</button>
+            </form>
+          </div>
+        </div>
+        
+    <div style="height:18px"></div>
+    <h3>候选资料</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>图片</th>
+          <th>来源</th>
+          <th>尺寸</th>
+          <th>Part No.</th>
+          <th>置信度</th>
+          <th>链接</th>
+        </tr>
+      </thead>
+      <tbody>
+            <tr>
+              <td>1</td>
+              <td><img class='thumb' src='https://www.webstaurantstore.com/images/categories/new/replmtrefrigergasket_sm.jpg' alt='密封条'></td>
+              <td><span class="pill">WebstaurantStore</span><br>Arctic Air Abb48 Refrigerator Door Gasket - WebstaurantStore</td>
+              <td>29 3/4 X 66 1/2<br><span class="muted">29.75 x 66.5 in</span></td>
+              <td>ners</td>
+              <td>85.0</td>
+              <td><a class="source-link" href="https://www.webstaurantstore.com/search/Arctic+Air+ABB48+refrigerator+door+gasket.html" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>2</td>
+              <td><img class='thumb' src='https://static-pt.com/_ui/responsive/common/images/part-predictor/logos-part-predictor-color.png' alt='密封条'></td>
+              <td><span class="pill">Parts Town</span><br>doorgasket | Parts Town</td>
+              <td><br><span class="muted"> x  in</span></td>
+              <td>SPIN</td>
+              <td>55.0</td>
+              <td><a class="source-link" href="https://www.partstown.com/search?q=Arctic+Air+ABB48+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>3</td>
+              <td><img class='thumb' src='https://restaurantcoolergaskets.com/media/logo/websites/1/RCG_LOGO_V2.fw_2.png' alt='密封条'></td>
+              <td><span class="pill">Restaurant Cooler Gaskets</span><br>Search results for: &#x27;Arctic Air ABB48 refrigerator door gasket&#x27;</td>
+              <td><br><span class="muted"> x  in</span></td>
+              <td>Replaces</td>
+              <td>55.0</td>
+              <td><a class="source-link" href="https://restaurantcoolergaskets.com/catalogsearch/result/index/?p=5&amp;q=Arctic+Air+ABB48+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            </tbody>
+    </table>
+    <p class="muted">给客户确认时通常只保留推荐门封条；给内部核对时可以展开候选资料。</p>
+  </div>
+</details>
+<details open>
+  <summary>第三部分：客户联系信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>客户名称</label><input value=""></div>
+      <div><label>客户电话</label><input value=""></div>
+      <div><label>客户邮箱</label><input value=""></div>
+    </div>
+    <div style="margin-top:12px"><label>备注</label><textarea></textarea></div>
+  </div>
+</details>
+<details open>
+  <summary>第四部分：加工信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>加工数量</label><input placeholder="例如：1"></div>
+      <div><label>门位</label><input value="" placeholder="例如：左门 / 右门 / 冷冻门"></div>
+      <div><label>加工状态</label><input value="待确认"></div>
+    </div>
+    <div style="margin-top:12px"><label>工厂备注</label><textarea placeholder="例如：按推荐尺寸加工，发货前核对横截面。"></textarea></div>
+  </div>
+</details>
+</main>
+<hr style="border:0;border-top:1px solid #d9dee5;margin:28px 0">
+  <header><h1>铭牌查询工作台</h1><p>上传铭牌，匹配产品资料，准备客户确认与工厂加工文件</p></header>
+  <main>
+<div class="actions no-print" style="justify-content:space-between;margin:0 0 18px">
+  <div>
+    <h2 style="margin-bottom:4px">查询结果</h2>
+    <span class="pill">preview</span>
+    <span class="muted">工单 ID：PREVIEW-26 / 产品 ID：26</span>
+  </div>
+  <a class="button secondary" href="/">继续上传</a>
+</div>
+<section>
+  <h2>冰箱信息</h2>
+  <div class="product-grid">
+    <div>
+      <h3>冰箱产品图片</h3>
+      <img class='hero-image' src='https://continentalrefrigerator.com/wp-content/uploads/2025/07/D2RINGD-Medium-1024x1024.png' alt='冰箱产品图片'>
+    </div>
+    <div>
+      <h3>客户铭牌照片</h3>
+      
+      <p class="muted">原始铭牌用于客户确认和内部核对。</p>
+    </div>
+    <div class="info-card">
+      <h3>基本信息</h3>
+      <div class="kv">
+        <div>品牌</div><div><strong>Continental</strong></div>
+        <div>型号</div><div><strong>D2R</strong></div>
+        <div>生产厂家</div><div></div>
+        <div>生产日期</div><div></div>
+        <div>序列号</div><div></div>
+        <div>资料状态</div><div>enriched</div>
+      </div>
+    </div>
+  </div>
+</section>
+<details open>
+  <summary>第二部分：密封条信息</summary>
+  <div class="details-body">
+    <h3>推荐门封条</h3>
+      
+        <div class="best-card">
+          <div class="best-title">
+            <div>
+              <span class="pill success">推荐候选</span> <span class='pill'>待确认</span>
+              <div style="height:8px"></div>
+              <strong>7/16&quot; x 28</strong>
+              <div class="muted">D2R+door+gasket | Parts Town</div>
+            </div>
+            <span class="pill">100.0</span>
+          </div>
+          <div class="metric-row">
+            <div class="metric"><span>宽度</span><strong>0.438</strong></div>
+            <div class="metric"><span>高度</span><strong>28.0</strong></div>
+            <div class="metric"><span>Part No.</span><strong>2-526</strong></div>
+          </div>
+          <div class="actions">
+            <a class="button ghost" target="_blank" href="https://www.partstown.com/search?q=Continental+D2R+refrigerator+door+gasket">查看来源</a>
+            <button type="button">生成客户确认 PDF</button>
+            <button type="button" class="secondary">生成工厂加工单</button>
+            <form method="post" action="/verify" style="display:inline-flex;margin:0">
+              <input type="hidden" name="product_id" value="26">
+              <input type="hidden" name="gasket_detail_id" value="50">
+              <input type="hidden" name="request_id" value="PREVIEW-26">
+              <button type="submit" class="secondary">安装成功，确认此资料</button>
+            </form>
+          </div>
+        </div>
+        
+    <div style="height:18px"></div>
+    <h3>候选资料</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>图片</th>
+          <th>来源</th>
+          <th>尺寸</th>
+          <th>Part No.</th>
+          <th>置信度</th>
+          <th>链接</th>
+        </tr>
+      </thead>
+      <tbody>
+            <tr>
+              <td>1</td>
+              <td><img class='thumb' src='https://partstown.sirv.com/products/CNT/CNT2-526.view?thumb&amp;image.rules=G0&amp;w=200' alt='密封条'></td>
+              <td><span class="pill">Parts Town</span><br>D2R+door+gasket | Parts Town</td>
+              <td>7/16&quot; x 28<br><span class="muted">0.438 x 28.0 in</span></td>
+              <td>2-526</td>
+              <td>100.0</td>
+              <td><a class="source-link" href="https://www.partstown.com/search?q=Continental+D2R+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>2</td>
+              <td><img class='thumb' src='https://www.webstaurantstore.com/images/categories/new/replmtrefrigergasket_sm.jpg' alt='密封条'></td>
+              <td><span class="pill">WebstaurantStore</span><br>Continental D2r Refrigerator Door Gasket - WebstaurantStore</td>
+              <td>19 5/8x29 1/4<br><span class="muted">19.625 x 29.25 in</span></td>
+              <td>ners</td>
+              <td>85.0</td>
+              <td><a class="source-link" href="https://www.webstaurantstore.com/search/Continental+D2R+refrigerator+door+gasket.html" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>3</td>
+              <td><img class='thumb' src='https://restaurantcoolergaskets.com/media/logo/websites/1/RCG_LOGO_V2.fw_2.png' alt='密封条'></td>
+              <td><span class="pill">Restaurant Cooler Gaskets</span><br>Search results for: &#x27;Continental D2R refrigerator door gasket&#x27;</td>
+              <td>22.5 x 25<br><span class="muted">22.5 x 25.0 in</span></td>
+              <td>Replaces</td>
+              <td>85.0</td>
+              <td><a class="source-link" href="https://restaurantcoolergaskets.com/catalogsearch/result/?q=Continental+D2R+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            </tbody>
+    </table>
+    <p class="muted">给客户确认时通常只保留推荐门封条；给内部核对时可以展开候选资料。</p>
+  </div>
+</details>
+<details open>
+  <summary>第三部分：客户联系信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>客户名称</label><input value=""></div>
+      <div><label>客户电话</label><input value=""></div>
+      <div><label>客户邮箱</label><input value=""></div>
+    </div>
+    <div style="margin-top:12px"><label>备注</label><textarea></textarea></div>
+  </div>
+</details>
+<details open>
+  <summary>第四部分：加工信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>加工数量</label><input placeholder="例如：1"></div>
+      <div><label>门位</label><input value="" placeholder="例如：左门 / 右门 / 冷冻门"></div>
+      <div><label>加工状态</label><input value="待确认"></div>
+    </div>
+    <div style="margin-top:12px"><label>工厂备注</label><textarea placeholder="例如：按推荐尺寸加工，发货前核对横截面。"></textarea></div>
+  </div>
+</details>
+</main>
+<hr style="border:0;border-top:1px solid #d9dee5;margin:28px 0">
+  <header><h1>铭牌查询工作台</h1><p>上传铭牌，匹配产品资料，准备客户确认与工厂加工文件</p></header>
+  <main>
+<div class="actions no-print" style="justify-content:space-between;margin:0 0 18px">
+  <div>
+    <h2 style="margin-bottom:4px">查询结果</h2>
+    <span class="pill">preview</span>
+    <span class="muted">工单 ID：PREVIEW-27 / 产品 ID：27</span>
+  </div>
+  <a class="button secondary" href="/">继续上传</a>
+</div>
+<section>
+  <h2>冰箱信息</h2>
+  <div class="product-grid">
+    <div>
+      <h3>冰箱产品图片</h3>
+      <img class='hero-image' src='https://continentalrefrigerator.com/wp-content/uploads/2024/07/D1RS-GDHD-Medium-1024x1024.jpeg' alt='冰箱产品图片'>
+    </div>
+    <div>
+      <h3>客户铭牌照片</h3>
+      
+      <p class="muted">原始铭牌用于客户确认和内部核对。</p>
+    </div>
+    <div class="info-card">
+      <h3>基本信息</h3>
+      <div class="kv">
+        <div>品牌</div><div><strong>Continental</strong></div>
+        <div>型号</div><div><strong>D1R</strong></div>
+        <div>生产厂家</div><div></div>
+        <div>生产日期</div><div></div>
+        <div>序列号</div><div></div>
+        <div>资料状态</div><div>enriched</div>
+      </div>
+    </div>
+  </div>
+</section>
+<details open>
+  <summary>第二部分：密封条信息</summary>
+  <div class="details-body">
+    <h3>推荐门封条</h3>
+      
+        <div class="best-card">
+          <div class="best-title">
+            <div>
+              <span class="pill success">推荐候选</span> <span class='pill'>待确认</span>
+              <div style="height:8px"></div>
+              <strong>7/16&quot; x 28</strong>
+              <div class="muted">D1R+door+gasket | Parts Town</div>
+            </div>
+            <span class="pill">100.0</span>
+          </div>
+          <div class="metric-row">
+            <div class="metric"><span>宽度</span><strong>0.438</strong></div>
+            <div class="metric"><span>高度</span><strong>28.0</strong></div>
+            <div class="metric"><span>Part No.</span><strong>2-526</strong></div>
+          </div>
+          <div class="actions">
+            <a class="button ghost" target="_blank" href="https://www.partstown.com/search?q=Continental+D1R+refrigerator+door+gasket">查看来源</a>
+            <button type="button">生成客户确认 PDF</button>
+            <button type="button" class="secondary">生成工厂加工单</button>
+            <form method="post" action="/verify" style="display:inline-flex;margin:0">
+              <input type="hidden" name="product_id" value="27">
+              <input type="hidden" name="gasket_detail_id" value="53">
+              <input type="hidden" name="request_id" value="PREVIEW-27">
+              <button type="submit" class="secondary">安装成功，确认此资料</button>
+            </form>
+          </div>
+        </div>
+        
+    <div style="height:18px"></div>
+    <h3>候选资料</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>图片</th>
+          <th>来源</th>
+          <th>尺寸</th>
+          <th>Part No.</th>
+          <th>置信度</th>
+          <th>链接</th>
+        </tr>
+      </thead>
+      <tbody>
+            <tr>
+              <td>1</td>
+              <td><img class='thumb' src='https://partstown.sirv.com/products/CNT/CNT2-526.view?thumb&amp;image.rules=G0&amp;w=200' alt='密封条'></td>
+              <td><span class="pill">Parts Town</span><br>D1R+door+gasket | Parts Town</td>
+              <td>7/16&quot; x 28<br><span class="muted">0.438 x 28.0 in</span></td>
+              <td>2-526</td>
+              <td>100.0</td>
+              <td><a class="source-link" href="https://www.partstown.com/search?q=Continental+D1R+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>2</td>
+              <td><img class='thumb' src='https://www.webstaurantstore.com/images/categories/new/replmtrefrigergasket_sm.jpg' alt='密封条'></td>
+              <td><span class="pill">WebstaurantStore</span><br>Continental D1r Refrigerator Door Gasket - WebstaurantStore</td>
+              <td>29 3/4 X 66 1/2<br><span class="muted">29.75 x 66.5 in</span></td>
+              <td>ners</td>
+              <td>85.0</td>
+              <td><a class="source-link" href="https://www.webstaurantstore.com/search/Continental+D1R+refrigerator+door+gasket.html" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>3</td>
+              <td><img class='thumb' src='https://restaurantcoolergaskets.com/media/logo/websites/1/RCG_LOGO_V2.fw_2.png' alt='密封条'></td>
+              <td><span class="pill">Restaurant Cooler Gaskets</span><br>Search results for: &#x27;Continental D1R refrigerator door gasket&#x27;</td>
+              <td>22.5 x 25<br><span class="muted">22.5 x 25.0 in</span></td>
+              <td>Replaces</td>
+              <td>85.0</td>
+              <td><a class="source-link" href="https://restaurantcoolergaskets.com/catalogsearch/result/?q=Continental+D1R+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            </tbody>
+    </table>
+    <p class="muted">给客户确认时通常只保留推荐门封条；给内部核对时可以展开候选资料。</p>
+  </div>
+</details>
+<details open>
+  <summary>第三部分：客户联系信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>客户名称</label><input value=""></div>
+      <div><label>客户电话</label><input value=""></div>
+      <div><label>客户邮箱</label><input value=""></div>
+    </div>
+    <div style="margin-top:12px"><label>备注</label><textarea></textarea></div>
+  </div>
+</details>
+<details open>
+  <summary>第四部分：加工信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>加工数量</label><input placeholder="例如：1"></div>
+      <div><label>门位</label><input value="" placeholder="例如：左门 / 右门 / 冷冻门"></div>
+      <div><label>加工状态</label><input value="待确认"></div>
+    </div>
+    <div style="margin-top:12px"><label>工厂备注</label><textarea placeholder="例如：按推荐尺寸加工，发货前核对横截面。"></textarea></div>
+  </div>
+</details>
+</main>
+<hr style="border:0;border-top:1px solid #d9dee5;margin:28px 0">
+  <header><h1>铭牌查询工作台</h1><p>上传铭牌，匹配产品资料，准备客户确认与工厂加工文件</p></header>
+  <main>
+<div class="actions no-print" style="justify-content:space-between;margin:0 0 18px">
+  <div>
+    <h2 style="margin-bottom:4px">查询结果</h2>
+    <span class="pill">preview</span>
+    <span class="muted">工单 ID：PREVIEW-28 / 产品 ID：28</span>
+  </div>
+  <a class="button secondary" href="/">继续上传</a>
+</div>
+<section>
+  <h2>冰箱信息</h2>
+  <div class="product-grid">
+    <div>
+      <h3>冰箱产品图片</h3>
+      <img class='hero-image' src='http://westerngrocer.com/wp-content/uploads/2016/10/image001.jpg' alt='冰箱产品图片'>
+    </div>
+    <div>
+      <h3>客户铭牌照片</h3>
+      
+      <p class="muted">原始铭牌用于客户确认和内部核对。</p>
+    </div>
+    <div class="info-card">
+      <h3>基本信息</h3>
+      <div class="kv">
+        <div>品牌</div><div><strong>Zero Zone</strong></div>
+        <div>型号</div><div><strong>Reveal</strong></div>
+        <div>生产厂家</div><div></div>
+        <div>生产日期</div><div></div>
+        <div>序列号</div><div></div>
+        <div>资料状态</div><div>enriched</div>
+      </div>
+    </div>
+  </div>
+</section>
+<details open>
+  <summary>第二部分：密封条信息</summary>
+  <div class="details-body">
+    <h3>推荐门封条</h3>
+      
+        <div class="best-card">
+          <div class="best-title">
+            <div>
+              <span class="pill success">推荐候选</span> <span class='pill'>待确认</span>
+              <div style="height:8px"></div>
+              <strong>29 3/4 X 66 1/2</strong>
+              <div class="muted">Zero Zone Reveal Refrigerator Door Gasket - WebstaurantStore</div>
+            </div>
+            <span class="pill">85.0</span>
+          </div>
+          <div class="metric-row">
+            <div class="metric"><span>宽度</span><strong>29.75</strong></div>
+            <div class="metric"><span>高度</span><strong>66.5</strong></div>
+            <div class="metric"><span>Part No.</span><strong>ners</strong></div>
+          </div>
+          <div class="actions">
+            <a class="button ghost" target="_blank" href="https://www.webstaurantstore.com/search/Zero+Zone+Reveal+refrigerator+door+gasket.html">查看来源</a>
+            <button type="button">生成客户确认 PDF</button>
+            <button type="button" class="secondary">生成工厂加工单</button>
+            <form method="post" action="/verify" style="display:inline-flex;margin:0">
+              <input type="hidden" name="product_id" value="28">
+              <input type="hidden" name="gasket_detail_id" value="55">
+              <input type="hidden" name="request_id" value="PREVIEW-28">
+              <button type="submit" class="secondary">安装成功，确认此资料</button>
+            </form>
+          </div>
+        </div>
+        
+    <div style="height:18px"></div>
+    <h3>候选资料</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>图片</th>
+          <th>来源</th>
+          <th>尺寸</th>
+          <th>Part No.</th>
+          <th>置信度</th>
+          <th>链接</th>
+        </tr>
+      </thead>
+      <tbody>
+            <tr>
+              <td>1</td>
+              <td><img class='thumb' src='https://www.webstaurantstore.com/images/categories/new/replmtrefrigergasket_sm.jpg' alt='密封条'></td>
+              <td><span class="pill">WebstaurantStore</span><br>Zero Zone Reveal Refrigerator Door Gasket - WebstaurantStore</td>
+              <td>29 3/4 X 66 1/2<br><span class="muted">29.75 x 66.5 in</span></td>
+              <td>ners</td>
+              <td>85.0</td>
+              <td><a class="source-link" href="https://www.webstaurantstore.com/search/Zero+Zone+Reveal+refrigerator+door+gasket.html" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>2</td>
+              <td><img class='thumb' src='https://partstown.sirv.com/products/ZER/ZER70-0614-1.view?thumb&amp;image.rules=G0&amp;w=200' alt='密封条'></td>
+              <td><span class="pill">Parts Town</span><br>Reveal+door+gasket | Parts Town</td>
+              <td>30X63 <br><span class="muted">30.0 x 63.0 in</span></td>
+              <td>pronto</td>
+              <td>85.0</td>
+              <td><a class="source-link" href="https://www.partstown.com/search?q=Zero+Zone+Reveal+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>3</td>
+              <td><img class='thumb' src='https://restaurantcoolergaskets.com/media/logo/websites/1/RCG_LOGO_V2.fw_2.png' alt='密封条'></td>
+              <td><span class="pill">Restaurant Cooler Gaskets</span><br>Search results for: &#x27;Zero Zone Reveal refrigerator door gasket&#x27;</td>
+              <td>26 7/16 x 44 11/16 <br><span class="muted">26.438 x 44.688 in</span></td>
+              <td>Replaces</td>
+              <td>85.0</td>
+              <td><a class="source-link" href="https://restaurantcoolergaskets.com/catalogsearch/result/?q=Zero+Zone+Reveal+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            </tbody>
+    </table>
+    <p class="muted">给客户确认时通常只保留推荐门封条；给内部核对时可以展开候选资料。</p>
+  </div>
+</details>
+<details open>
+  <summary>第三部分：客户联系信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>客户名称</label><input value=""></div>
+      <div><label>客户电话</label><input value=""></div>
+      <div><label>客户邮箱</label><input value=""></div>
+    </div>
+    <div style="margin-top:12px"><label>备注</label><textarea></textarea></div>
+  </div>
+</details>
+<details open>
+  <summary>第四部分：加工信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>加工数量</label><input placeholder="例如：1"></div>
+      <div><label>门位</label><input value="" placeholder="例如：左门 / 右门 / 冷冻门"></div>
+      <div><label>加工状态</label><input value="待确认"></div>
+    </div>
+    <div style="margin-top:12px"><label>工厂备注</label><textarea placeholder="例如：按推荐尺寸加工，发货前核对横截面。"></textarea></div>
+  </div>
+</details>
+</main>
+<hr style="border:0;border-top:1px solid #d9dee5;margin:28px 0">
+  <header><h1>铭牌查询工作台</h1><p>上传铭牌，匹配产品资料，准备客户确认与工厂加工文件</p></header>
+  <main>
+<div class="actions no-print" style="justify-content:space-between;margin:0 0 18px">
+  <div>
+    <h2 style="margin-bottom:4px">查询结果</h2>
+    <span class="pill">preview</span>
+    <span class="muted">工单 ID：PREVIEW-29 / 产品 ID：29</span>
+  </div>
+  <a class="button secondary" href="/">继续上传</a>
+</div>
+<section>
+  <h2>冰箱信息</h2>
+  <div class="product-grid">
+    <div>
+      <h3>冰箱产品图片</h3>
+      <img class='hero-image' src='https://cdnimg.webstaurantstore.com/images/products/large/25555/1475673.jpg' alt='冰箱产品图片'>
+    </div>
+    <div>
+      <h3>客户铭牌照片</h3>
+      
+      <p class="muted">原始铭牌用于客户确认和内部核对。</p>
+    </div>
+    <div class="info-card">
+      <h3>基本信息</h3>
+      <div class="kv">
+        <div>品牌</div><div><strong>Traulsen</strong></div>
+        <div>型号</div><div><strong>G12010</strong></div>
+        <div>生产厂家</div><div></div>
+        <div>生产日期</div><div></div>
+        <div>序列号</div><div></div>
+        <div>资料状态</div><div>enriched</div>
+      </div>
+    </div>
+  </div>
+</section>
+<details open>
+  <summary>第二部分：密封条信息</summary>
+  <div class="details-body">
+    <h3>推荐门封条</h3>
+      
+        <div class="best-card">
+          <div class="best-title">
+            <div>
+              <span class="pill success">推荐候选</span> <span class='pill'>待确认</span>
+              <div style="height:8px"></div>
+              <strong>尺寸待确认</strong>
+              <div class="muted">door gasket | Parts Town</div>
+            </div>
+            <span class="pill">70.0</span>
+          </div>
+          <div class="metric-row">
+            <div class="metric"><span>宽度</span><strong>-</strong></div>
+            <div class="metric"><span>高度</span><strong>-</strong></div>
+            <div class="metric"><span>Part No.</span><strong>SPIN</strong></div>
+          </div>
+          <div class="actions">
+            <a class="button ghost" target="_blank" href="https://www.partstown.com/search?q=Traulsen+G12010+refrigerator+door+gasket">查看来源</a>
+            <button type="button">生成客户确认 PDF</button>
+            <button type="button" class="secondary">生成工厂加工单</button>
+            <form method="post" action="/verify" style="display:inline-flex;margin:0">
+              <input type="hidden" name="product_id" value="29">
+              <input type="hidden" name="gasket_detail_id" value="59">
+              <input type="hidden" name="request_id" value="PREVIEW-29">
+              <button type="submit" class="secondary">安装成功，确认此资料</button>
+            </form>
+          </div>
+        </div>
+        
+    <div style="height:18px"></div>
+    <h3>候选资料</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>图片</th>
+          <th>来源</th>
+          <th>尺寸</th>
+          <th>Part No.</th>
+          <th>置信度</th>
+          <th>链接</th>
+        </tr>
+      </thead>
+      <tbody>
+            <tr>
+              <td>1</td>
+              <td><img class='thumb' src='https://static-pt.com/_ui/responsive/common/images/part-predictor/logos-part-predictor-color.png' alt='密封条'></td>
+              <td><span class="pill">Parts Town</span><br>door gasket | Parts Town</td>
+              <td><br><span class="muted"> x  in</span></td>
+              <td>SPIN</td>
+              <td>70.0</td>
+              <td><a class="source-link" href="https://www.partstown.com/search?q=Traulsen+G12010+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>2</td>
+              <td><img class='thumb' src='https://restaurantcoolergaskets.com/media/logo/websites/1/RCG_LOGO_V2.fw_2.png' alt='密封条'></td>
+              <td><span class="pill">Restaurant Cooler Gaskets</span><br>Search results for: &#x27;Traulsen G12010 refrigerator door gasket&#x27;</td>
+              <td><br><span class="muted"> x  in</span></td>
+              <td>Replaces</td>
+              <td>55.0</td>
+              <td><a class="source-link" href="https://restaurantcoolergaskets.com/catalogsearch/result/index/?p=5&amp;q=Traulsen+G12010+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>3</td>
+              <td><span class='muted'>无图</span></td>
+              <td><span class="pill">WebstaurantStore</span><br>Victory Traulsen G12010 Refrigerator Door Gasket - WebstaurantStore</td>
+              <td><br><span class="muted"> x  in</span></td>
+              <td>ners</td>
+              <td>35.0</td>
+              <td><a class="source-link" href="https://www.webstaurantstore.com/search/traulsen-g12010-refrigerator-door-gasket.html?vendor=Victory" target="_blank">打开</a></td>
+            </tr>
+            </tbody>
+    </table>
+    <p class="muted">给客户确认时通常只保留推荐门封条；给内部核对时可以展开候选资料。</p>
+  </div>
+</details>
+<details open>
+  <summary>第三部分：客户联系信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>客户名称</label><input value=""></div>
+      <div><label>客户电话</label><input value=""></div>
+      <div><label>客户邮箱</label><input value=""></div>
+    </div>
+    <div style="margin-top:12px"><label>备注</label><textarea></textarea></div>
+  </div>
+</details>
+<details open>
+  <summary>第四部分：加工信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>加工数量</label><input placeholder="例如：1"></div>
+      <div><label>门位</label><input value="" placeholder="例如：左门 / 右门 / 冷冻门"></div>
+      <div><label>加工状态</label><input value="待确认"></div>
+    </div>
+    <div style="margin-top:12px"><label>工厂备注</label><textarea placeholder="例如：按推荐尺寸加工，发货前核对横截面。"></textarea></div>
+  </div>
+</details>
+</main>
+<hr style="border:0;border-top:1px solid #d9dee5;margin:28px 0">
+  <header><h1>铭牌查询工作台</h1><p>上传铭牌，匹配产品资料，准备客户确认与工厂加工文件</p></header>
+  <main>
+<div class="actions no-print" style="justify-content:space-between;margin:0 0 18px">
+  <div>
+    <h2 style="margin-bottom:4px">查询结果</h2>
+    <span class="pill">preview</span>
+    <span class="muted">工单 ID：PREVIEW-30 / 产品 ID：30</span>
+  </div>
+  <a class="button secondary" href="/">继续上传</a>
+</div>
+<section>
+  <h2>冰箱信息</h2>
+  <div class="product-grid">
+    <div>
+      <h3>冰箱产品图片</h3>
+      <img class='hero-image' src='https://www.chefaaa.com/cdn/shop/products/TurboAir-TSR-49SD-N6.jpg?v=1645913422&amp;width=700' alt='冰箱产品图片'>
+    </div>
+    <div>
+      <h3>客户铭牌照片</h3>
+      
+      <p class="muted">原始铭牌用于客户确认和内部核对。</p>
+    </div>
+    <div class="info-card">
+      <h3>基本信息</h3>
+      <div class="kv">
+        <div>品牌</div><div><strong>Turbo Air</strong></div>
+        <div>型号</div><div><strong>TSR-49SD</strong></div>
+        <div>生产厂家</div><div></div>
+        <div>生产日期</div><div></div>
+        <div>序列号</div><div></div>
+        <div>资料状态</div><div>enriched</div>
+      </div>
+    </div>
+  </div>
+</section>
+<details open>
+  <summary>第二部分：密封条信息</summary>
+  <div class="details-body">
+    <h3>推荐门封条</h3>
+      
+        <div class="best-card">
+          <div class="best-title">
+            <div>
+              <span class="pill success">推荐候选</span> <span class='pill'>待确认</span>
+              <div style="height:8px"></div>
+              <strong>8 X 39</strong>
+              <div class="muted">Turbo Air Tsr 49Sd Refrigerator Door Gasket - WebstaurantStore</div>
+            </div>
+            <span class="pill">85.0</span>
+          </div>
+          <div class="metric-row">
+            <div class="metric"><span>宽度</span><strong>8.0</strong></div>
+            <div class="metric"><span>高度</span><strong>39.0</strong></div>
+            <div class="metric"><span>Part No.</span><strong>ners</strong></div>
+          </div>
+          <div class="actions">
+            <a class="button ghost" target="_blank" href="https://www.webstaurantstore.com/search/Turbo+Air+TSR-49SD+refrigerator+door+gasket.html">查看来源</a>
+            <button type="button">生成客户确认 PDF</button>
+            <button type="button" class="secondary">生成工厂加工单</button>
+            <form method="post" action="/verify" style="display:inline-flex;margin:0">
+              <input type="hidden" name="product_id" value="30">
+              <input type="hidden" name="gasket_detail_id" value="61">
+              <input type="hidden" name="request_id" value="PREVIEW-30">
+              <button type="submit" class="secondary">安装成功，确认此资料</button>
+            </form>
+          </div>
+        </div>
+        
+    <div style="height:18px"></div>
+    <h3>候选资料</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>图片</th>
+          <th>来源</th>
+          <th>尺寸</th>
+          <th>Part No.</th>
+          <th>置信度</th>
+          <th>链接</th>
+        </tr>
+      </thead>
+      <tbody>
+            <tr>
+              <td>1</td>
+              <td><img class='thumb' src='https://www.webstaurantstore.com/images/categories/new/replmtrefrigergasket_sm.jpg' alt='密封条'></td>
+              <td><span class="pill">WebstaurantStore</span><br>Turbo Air Tsr 49Sd Refrigerator Door Gasket - WebstaurantStore</td>
+              <td>8 X 39<br><span class="muted">8.0 x 39.0 in</span></td>
+              <td>ners</td>
+              <td>85.0</td>
+              <td><a class="source-link" href="https://www.webstaurantstore.com/search/Turbo+Air+TSR-49SD+refrigerator+door+gasket.html" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>2</td>
+              <td><img class='thumb' src='https://static-pt.com/_ui/responsive/common/images/part-predictor/logos-part-predictor-color.png' alt='密封条'></td>
+              <td><span class="pill">Parts Town</span><br>door gasket | Parts Town</td>
+              <td>25.5 X 53<br><span class="muted">25.5 x 53.0 in</span></td>
+              <td>SPIN</td>
+              <td>85.0</td>
+              <td><a class="source-link" href="https://www.partstown.com/search?q=Turbo+Air+TSR-49SD+refrigerator+door+gasket" target="_blank">打开</a></td>
+            </tr>
+            
+            <tr>
+              <td>3</td>
+              <td><img class='thumb' src='https://restaurantcoolergaskets.com/media/logo/websites/1/RCG_LOGO_V2.fw_2.png' alt='密封条'></td>
+              <td><span class="pill">Restaurant Cooler Gaskets</span><br>Turbo Air Replacement Door Gaskets | Restaurant Cooler Gaskets</td>
+              <td><br><span class="muted"> x  in</span></td>
+              <td>Replaces</td>
+              <td>55.0</td>
+              <td><a class="source-link" href="https://restaurantcoolergaskets.com/turbo-air.html" target="_blank">打开</a></td>
+            </tr>
+            </tbody>
+    </table>
+    <p class="muted">给客户确认时通常只保留推荐门封条；给内部核对时可以展开候选资料。</p>
+  </div>
+</details>
+<details open>
+  <summary>第三部分：客户联系信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>客户名称</label><input value=""></div>
+      <div><label>客户电话</label><input value=""></div>
+      <div><label>客户邮箱</label><input value=""></div>
+    </div>
+    <div style="margin-top:12px"><label>备注</label><textarea></textarea></div>
+  </div>
+</details>
+<details open>
+  <summary>第四部分：加工信息</summary>
+  <div class="details-body">
+    <div class="form-grid">
+      <div><label>加工数量</label><input placeholder="例如：1"></div>
+      <div><label>门位</label><input value="" placeholder="例如：左门 / 右门 / 冷冻门"></div>
+      <div><label>加工状态</label><input value="待确认"></div>
+    </div>
+    <div style="margin-top:12px"><label>工厂备注</label><textarea placeholder="例如：按推荐尺寸加工，发货前核对横截面。"></textarea></div>
+  </div>
+</details>
+</main>
+</body></html>
