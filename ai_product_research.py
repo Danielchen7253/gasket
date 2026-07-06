@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -306,19 +307,28 @@ def _call_openai_research(prompt: str) -> dict[str, Any]:
                 }
             ],
         }
-        response = httpx.post(
-            "https://api.openai.com/v1/responses",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=120,
-        )
-        if response.status_code < 400:
+        for retry in range(3):
+            response = httpx.post(
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=120,
+            )
+            if response.status_code < 500 and response.status_code != 429:
+                break
+            errors.append(
+                f"{model_name}/{tool_type} attempt {retry + 1}: {response.status_code} {response.text[:500]}"
+            )
+            if retry < 2:
+                time.sleep(min(2 ** retry, 4))
+        if response is not None and response.status_code < 400:
             break
-        errors.append(f"{model_name}/{tool_type}: {response.status_code} {response.text[:300]}")
-        response = None
     if response is None:
         raise RuntimeError("OpenAI product research failed: " + " | ".join(errors))
-    response.raise_for_status()
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"OpenAI product research failed: {response.status_code} {response.text[:1000]}"
+        )
     data = response.json()
     output_text = data.get("output_text")
     if not output_text:

@@ -8,6 +8,7 @@ import mimetypes
 import os
 import re
 import secrets
+import time
 import threading
 import uuid
 from http import HTTPStatus
@@ -617,8 +618,7 @@ def identify_nameplate(image_bytes: bytes, filename: str) -> dict:
         "brand, model, serial_number, manufacturer, manufacture_date, refrigerant, voltage, raw_text, confidence. "
         "Use null for missing fields. The model is the equipment model number, not the serial number."
     )
-    payload = {
-        "model": OPENAI_NAMEPLATE_MODEL,
+    base_payload = {
         "input": [{
             "role": "user",
             "content": [
@@ -627,13 +627,36 @@ def identify_nameplate(image_bytes: bytes, filename: str) -> dict:
             ],
         }],
     }
-    response = httpx.post(
-        "https://api.openai.com/v1/responses",
-        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=60,
-    )
-    response.raise_for_status()
+    attempts = [OPENAI_NAMEPLATE_MODEL]
+    if OPENAI_NAMEPLATE_MODEL != "gpt-4.1":
+        attempts.append("gpt-4.1")
+    response = None
+    errors: list[str] = []
+    for model_name in attempts:
+        payload = dict(base_payload)
+        payload["model"] = model_name
+        for retry in range(3):
+            response = httpx.post(
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=60,
+            )
+            if response.status_code < 500 and response.status_code != 429:
+                break
+            errors.append(
+                f"{model_name} attempt {retry + 1}: {response.status_code} {response.text[:500]}"
+            )
+            if retry < 2:
+                time.sleep(min(2 ** retry, 4))
+        if response is not None and response.status_code < 400:
+            break
+    if response is None:
+        raise RuntimeError("OpenAI nameplate recognition failed: " + " | ".join(errors))
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"OpenAI nameplate recognition failed: {response.status_code} {response.text[:1000]}"
+        )
     data = response.json()
     output_text = data.get("output_text")
     if not output_text:
