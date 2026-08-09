@@ -330,6 +330,13 @@ a.link{{color:#0a6f78;text-decoration:none;font-weight:700}}
 .metric{{border:1px solid #dbe2ea;border-radius:10px;padding:14px;background:#fbfdfe}}
 .metric span{{display:block;color:#687385;font-size:13px;margin-bottom:4px}}
 .metric strong{{font-size:26px}}
+.quality-bar{{height:8px;background:#e7edf2;border-radius:4px;overflow:hidden;margin-top:8px}}
+.quality-bar span{{display:block;height:100%;background:#0a6f78}}
+.detail-grid{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}}
+.detail-item{{border-bottom:1px solid #e5ebf2;padding:10px 0;min-width:0}}
+.detail-item span{{display:block;color:#687385;font-size:12px;margin-bottom:5px}}
+.detail-item strong{{display:block;overflow-wrap:anywhere}}
+.product-thumb{{width:116px;height:116px;object-fit:contain;border:1px solid #dbe2ea;background:#fff}}
 .split{{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}}
 .accordion summary{{cursor:pointer;font-weight:700;font-size:16px;list-style:none}}
 .accordion summary::-webkit-details-marker{{display:none}}
@@ -344,10 +351,10 @@ th{{color:#687385;font-size:12px;text-transform:uppercase;letter-spacing:.04em}}
 .status-customer_confirmed{{background:#ecfdf3;color:#166534}}
 .status-unknown{{background:#f8fafc;color:#334155}}
 .footer-actions{{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}}
-@media(max-width:980px){{.metric-grid,.split{{grid-template-columns:1fr}}}}
+@media(max-width:980px){{.metric-grid,.split,.detail-grid{{grid-template-columns:1fr}}}}
 </style></head>
 <body>
-<header><div><strong>门封条后台管理</strong><div class="muted" style="color:#b9c4cc">订单列表 · 数据看板 · 数据库管理</div></div><div><a class="button" href="/admin/logout">退出登录</a></div></header>
+<header><div><strong>门封条后台管理</strong><div class="muted" style="color:#b9c4cc">订单列表 · 数据看板 · 数据库管理</div></div><div class="row"><a class="button" href="/admin">订单与数据库</a><a class="button" href="/admin/products-quality">主表质量</a><a class="button" href="/admin/logout">退出登录</a></div></header>
 <main>{body}</main>
 </body></html>""".encode("utf-8")
 
@@ -1950,6 +1957,227 @@ def fetch_admin_products(
     return rows, total
 
 
+def fetch_product_quality_summary(client: httpx.Client) -> dict:
+    rows = fetch_rows(client, "refrigerator_product_quality_summary", limit=1)
+    return rows[0] if rows else {}
+
+
+def fetch_quality_products(
+    client: httpx.Client,
+    *,
+    q: str = "",
+    quality: str = "",
+    page: int = 1,
+    page_size: int = ADMIN_PAGE_SIZE,
+) -> tuple[list[dict], int]:
+    filters: dict[str, object] = {}
+    extra_params: list[tuple[str, object]] = []
+    if quality in {"complete", "customer_ready", "researched", "identity_only", "invalid"}:
+        filters["quality_level"] = f"eq.{quality}"
+    elif quality == "missing_image":
+        filters["product_image_url"] = "is.null"
+    elif quality == "missing_document":
+        extra_params.append(
+            (
+                "and",
+                "(official_product_url.is.null,spec_sheet_url.is.null,manual_url.is.null)",
+            )
+        )
+    q_safe = re.sub(r"[(),]", " ", q or "").strip()
+    if q_safe:
+        extra_params.append(
+            (
+                "or",
+                f"(brand.ilike.*{q_safe}*,equipment_model.ilike.*{q_safe}*,manufacturer.ilike.*{q_safe}*,product_type.ilike.*{q_safe}*)",
+            )
+        )
+    total = count_rows(
+        client,
+        "refrigerator_product_quality",
+        filters=filters,
+        extra_params=extra_params,
+    )
+    rows = fetch_rows(
+        client,
+        "refrigerator_product_quality",
+        order="updated_at.desc",
+        limit=page_size,
+        offset=max(0, (page - 1) * page_size),
+        filters=filters,
+        extra_params=extra_params,
+    )
+    return rows, total
+
+
+def quality_level_label(value: str | None) -> str:
+    return {
+        "complete": "完整",
+        "customer_ready": "客户可用",
+        "researched": "已研究",
+        "identity_only": "仅品牌型号",
+        "invalid": "无效/占位",
+    }.get((value or "").strip().lower(), "未知")
+
+
+def quality_detail_value(value: object) -> str:
+    if value in (None, "", [], {}):
+        return "未填写"
+    if isinstance(value, (dict, list)):
+        return esc(json.dumps(value, ensure_ascii=False, indent=2))
+    return esc(value)
+
+
+def admin_product_quality_page(client: httpx.Client, query: dict[str, list[str]]) -> bytes:
+    q = (query.get("q", [""])[0] or "").strip()
+    quality = (query.get("quality", [""])[0] or "").strip()
+    try:
+        current_page = max(1, int(query.get("page", ["1"])[0] or "1"))
+    except (TypeError, ValueError):
+        current_page = 1
+    product_id_raw = (query.get("product_id", [""])[0] or "").strip()
+    product_id = int(product_id_raw) if product_id_raw.isdigit() else None
+
+    summary = fetch_product_quality_summary(client)
+    products, total = fetch_quality_products(client, q=q, quality=quality, page=current_page)
+    pages = max(1, (total + ADMIN_PAGE_SIZE - 1) // ADMIN_PAGE_SIZE) if total else 1
+    current_page = min(current_page, pages)
+    detail_rows = fetch_rows(
+        client,
+        "refrigerator_product_quality",
+        filters={"id": f"eq.{product_id}"},
+        limit=1,
+    ) if product_id else []
+    detail = detail_rows[0] if detail_rows else None
+
+    total_products = int(summary.get("total_products") or 0)
+    def coverage(value: object) -> tuple[int, str]:
+        count = int(value or 0)
+        percent = (count * 100.0 / total_products) if total_products else 0.0
+        return count, f"{percent:.1f}%"
+
+    coverage_fields = [
+        ("生产厂家", "manufacturer_filled"),
+        ("产品类型", "product_type_filled"),
+        ("门数", "door_count_filled"),
+        ("门位结构", "door_layout_filled"),
+        ("门位 JSON", "door_positions_filled"),
+        ("产品主图", "image_filled"),
+        ("官网/规格书/手册", "document_filled"),
+        ("生命周期", "lifecycle_filled"),
+        ("置信度", "confidence_filled"),
+        ("来源摘要", "source_summary_filled"),
+    ]
+    coverage_html = "".join(
+        f"<tr><td>{label}</td><td>{coverage(summary.get(key))[0]:,}</td><td>{coverage(summary.get(key))[1]}</td><td><div class='quality-bar'><span style='width:{coverage(summary.get(key))[1]}'></span></div></td></tr>"
+        for label, key in coverage_fields
+    )
+
+    base_params = {"q": q, "quality": quality}
+    prev_url = "/admin/products-quality?" + urlencode({**base_params, "page": max(1, current_page - 1)})
+    next_url = "/admin/products-quality?" + urlencode({**base_params, "page": min(pages, current_page + 1)})
+    list_rows = "".join(
+        f"""<tr>
+          <td>{esc(row.get('brand'))}</td>
+          <td><a class="link" href="/admin/products-quality?{urlencode({**base_params, 'page': current_page, 'product_id': row.get('id')})}">{esc(row.get('equipment_model'))}</a></td>
+          <td><span class="badge">{quality_level_label(row.get('quality_level'))}</span></td>
+          <td>{esc(row.get('completeness_percent'))}%</td>
+          <td>{esc(row.get('door_count') or '—')}</td>
+          <td>{'有' if row.get('product_image_url') else '无'}</td>
+          <td>{', '.join(row.get('missing_fields') or []) or '无'}</td>
+          <td>{esc(row.get('updated_at') or '')}</td>
+        </tr>"""
+        for row in products
+    ) or "<tr><td colspan='8' class='muted'>没有符合条件的产品</td></tr>"
+
+    detail_html = ""
+    if detail:
+        field_labels = [
+            ("ID", "id"), ("品牌", "brand"), ("型号", "equipment_model"),
+            ("生产厂家", "manufacturer"), ("生产日期", "manufacture_date"),
+            ("生产日期文字", "manufacture_date_text"), ("产品类型", "product_type"),
+            ("门数", "door_count"), ("门位结构", "door_layout"),
+            ("门位 JSON", "door_positions"), ("生命周期", "lifecycle_status"),
+            ("型号年份开始", "model_year_start"), ("型号年份结束", "model_year_end"),
+            ("市场类别", "market_category"), ("商业领域", "commercial_sector"),
+            ("设备类别", "equipment_category"), ("设备形式", "equipment_form"),
+            ("温度用途", "temperature_application"), ("数据状态", "data_status"),
+            ("数据置信度", "data_confidence"), ("分类置信度", "classification_confidence"),
+            ("门位置信度", "door_layout_confidence"), ("主图置信度", "product_image_confidence"),
+            ("官网链接", "official_product_url"), ("规格书链接", "spec_sheet_url"),
+            ("手册链接", "manual_url"), ("生命周期证据", "lifecycle_evidence_url"),
+            ("主图来源", "product_image_source_url"), ("数据来源摘要", "data_source_summary"),
+            ("分类来源", "classification_source"), ("分类备注", "classification_notes"),
+            ("门位来源", "door_layout_source"), ("缺失字段", "missing_fields"),
+            ("入库时间", "created_at"), ("更新时间", "updated_at"),
+            ("最后发现时间", "last_discovered_at"), ("最后补全时间", "last_enriched_at"),
+        ]
+        detail_items = "".join(
+            f"<div class='detail-item'><span>{label}</span><strong>{quality_detail_value(detail.get(key))}</strong></div>"
+            for label, key in field_labels
+        )
+        image_html = (
+            f"<img class='product-thumb' src='{esc(detail.get('product_image_url'))}' alt='产品主图'>"
+            if detail.get("product_image_url") else "<div class='product-thumb muted' style='display:grid;place-items:center'>无主图</div>"
+        )
+        detail_html = f"""
+<section>
+  <div class="row" style="justify-content:space-between;align-items:flex-start">
+    <div><h2>{esc(detail.get('brand'))} {esc(detail.get('equipment_model'))}</h2><div class="muted">主表 ID {esc(detail.get('id'))} · 完整度 {esc(detail.get('completeness_percent'))}% · {quality_level_label(detail.get('quality_level'))}</div></div>
+    {image_html}
+  </div>
+  <div class="detail-grid" style="margin-top:14px">{detail_items}</div>
+</section>"""
+
+    body = f"""
+<section>
+  <div class="row" style="justify-content:space-between">
+    <div><h1>主表数据库质量</h1><div class="muted">查看总体覆盖率、筛选缺失资料，并进入单个型号检查全部字段。</div></div>
+    <a class="button" href="/admin">返回后台首页</a>
+  </div>
+</section>
+<section class="metric-grid">
+  <div class="metric"><span>产品总数</span><strong>{int(summary.get('total_products') or 0):,}</strong></div>
+  <div class="metric"><span>真实有效品牌型号</span><strong>{int(summary.get('valid_products') or 0):,}</strong></div>
+  <div class="metric"><span>客户可用</span><strong>{int(summary.get('customer_ready_products') or 0):,}</strong></div>
+  <div class="metric"><span>完整记录</span><strong>{int(summary.get('complete_products') or 0):,}</strong></div>
+</section>
+<section class="metric-grid">
+  <div class="metric"><span>仅品牌型号</span><strong>{int(summary.get('identity_only_products') or 0):,}</strong></div>
+  <div class="metric"><span>已研究</span><strong>{int(summary.get('researched_products') or 0):,}</strong></div>
+  <div class="metric"><span>无效/占位</span><strong>{int(summary.get('invalid_products') or 0):,}</strong></div>
+  <div class="metric"><span>已有主图</span><strong>{int(summary.get('image_filled') or 0):,}</strong></div>
+</section>
+<section>
+  <h2>字段覆盖率</h2>
+  <table><thead><tr><th>字段</th><th>已填写</th><th>覆盖率</th><th style="width:35%">进度</th></tr></thead><tbody>{coverage_html}</tbody></table>
+</section>
+{detail_html}
+<section>
+  <form method="get" action="/admin/products-quality" class="toolbar">
+    <div style="min-width:280px;flex:1"><label>搜索产品</label><input name="q" value="{esc(q)}" placeholder="品牌 / 型号 / 厂家 / 产品类型"></div>
+    <div style="min-width:190px"><label>质量等级</label><select name="quality">
+      <option value="">全部产品</option>
+      <option value="complete"{' selected' if quality == 'complete' else ''}>完整</option>
+      <option value="customer_ready"{' selected' if quality == 'customer_ready' else ''}>客户可用</option>
+      <option value="researched"{' selected' if quality == 'researched' else ''}>已研究</option>
+      <option value="identity_only"{' selected' if quality == 'identity_only' else ''}>仅品牌型号</option>
+      <option value="invalid"{' selected' if quality == 'invalid' else ''}>无效/占位</option>
+      <option value="missing_image"{' selected' if quality == 'missing_image' else ''}>缺少主图</option>
+      <option value="missing_document"{' selected' if quality == 'missing_document' else ''}>缺少官网/文档</option>
+    </select></div>
+    <button type="submit">查询</button>
+  </form>
+  <p class="muted">共 {total:,} 条；每页 {ADMIN_PAGE_SIZE} 条；第 {current_page} / {pages} 页。点击型号查看该行全部字段。</p>
+  <div style="overflow-x:auto"><table>
+    <thead><tr><th>品牌</th><th>型号</th><th>质量等级</th><th>完整度</th><th>门数</th><th>主图</th><th>缺失字段</th><th>更新时间</th></tr></thead>
+    <tbody>{list_rows}</tbody>
+  </table></div>
+  <div class="footer-actions"><a class="button" href="{prev_url}">上一页</a><span class="muted">{current_page} / {pages}</span><a class="button" href="{next_url}">下一页</a></div>
+</section>
+"""
+    return admin_page("主表数据库质量", body)
+
+
 def admin_dashboard_counts(client: httpx.Client) -> dict[str, int]:
     return {
         "products": count_rows(client, "refrigerator_products"),
@@ -2606,6 +2834,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with httpx.Client(timeout=30) as client:
                 self.send_html(admin_dashboard_page(client, parse_qs(parsed.query)))
+            return
+        if parsed.path in {"/admin/products-quality", "/admin/products-quality/"}:
+            if not is_admin_authenticated(self):
+                self.send_html(admin_login_response(next_path=self.path))
+                return
+            with httpx.Client(timeout=30) as client:
+                self.send_html(admin_product_quality_page(client, parse_qs(parsed.query)))
             return
         if parsed.path == "/admin/login":
             self.send_html(admin_login_response(next_path=(parse_qs(parsed.query).get("next", ["/admin"])[0] or "/admin")))
