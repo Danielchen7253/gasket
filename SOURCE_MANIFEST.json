@@ -1,0 +1,100 @@
+[
+  {
+    "path": "C:\\Users\\joel7\\gasket_scraper\\brand_seed_scraper.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-scraper/brand_seed_scraper.py",
+    "sha256": "7d01ad490253b8a1e6b1aab1b00761a7d7ad6115ba1cefd5ac8d428785a893b3",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\gasket_scraper\\crawl_source_pages.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-scraper/crawl_source_pages.py",
+    "sha256": "35d809d28143a591631d35d8698e72c6f865bcec393d9f1efc78d866e56e9cb4",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\gasket_scraper\\direct_partstown_scraper.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-scraper/direct_partstown_scraper.py",
+    "sha256": "35c6c1cfa40eb598170d22e42a12efe988124aa50e8dcb4d7ba645632e5e567a",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\gasket_scraper\\generate_crawl_tasks.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-scraper/generate_crawl_tasks.py",
+    "sha256": "eb30022c34f41dd02499c2eebf1860a79427a80d0f3e49acf5de92d23d98d91f",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\gasket_scraper\\run_crawl_tasks.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-scraper/run_crawl_tasks.py",
+    "sha256": "6ebf236944032d409c5e102bcab59bc69aceb59659a396ab2cb69046e21c804e",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\gasket_scraper\\scraper.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-scraper/scraper.py",
+    "sha256": "ec9f91d6d6729678423726c1a63c7e90d73526b843c1e7ba0711043ee80851be",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\gasket_scraper\\test_supabase.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-scraper/test_supabase.py",
+    "sha256": "1f19b97fff5d0e4fb46d9bb07172e0e9a28523fc41a5c336813c06ed3cd01c77",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\Documents\\Codex\\2026-06-14\\new-chat\\work\\build_commercial_gasket_import_workbook.mjs",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-research/build_commercial_gasket_import_workbook.mjs",
+    "sha256": "3083e0b007bfc208a9b3f52bca5114b95d9e1745f4f8f43c579b358e67e4999e",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\Documents\\Codex\\2026-06-14\\new-chat\\work\\build_cross_section_workbook.mjs",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-research/build_cross_section_workbook.mjs",
+    "sha256": "62bb6b2d47a568591f8af9515065da7bb2921c00d3d8b656961f7a34182a4994",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\Documents\\Codex\\2026-06-14\\new-chat\\work\\build_gasket_import_workbook.mjs",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-research/build_gasket_import_workbook.mjs",
+    "sha256": "74595da5cb5440651cde36fe30c354018fd8a0d54c2f1d034506678eb15ff00c",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\Documents\\Codex\\2026-06-14\\new-chat\\work\\scrape_commercial_gasket_sample.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-research/scrape_commercial_gasket_sample.py",
+    "sha256": "eca23198bfcc670a2e87deb52b84503328d0558303c4ff4e89a798ff906a6bef",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\Documents\\Codex\\2026-06-14\\new-chat\\work\\scrape_cross_section_images.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-research/scrape_cross_section_images.py",
+    "sha256": "3480f08f86677d37d57510aeffcbf4183fe35a2725ee316ce9526a0372ddc10f",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\Documents\\Codex\\2026-06-14\\new-chat\\work\\scrape_gasket_sample.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/gasket-research/scrape_gasket_sample.py",
+    "sha256": "ba6698c0ad0770762d98170e82b251cc065c7b8df9f33a4fe1039d7d39e57fa2",
+    "action": "copy"
+  },
+  {
+    "path": "C:\\Users\\joel7\\generate_crawl_tasks.py",
+    "repo": "gasket",
+    "remote_path": "archives/next-batch/home-scripts/generate_crawl_tasks.py",
+    "sha256": "6d39d781cfbebd88f15bdf1f6d4443d1323ea75c8d85a84145b0023e9ec1ee92",
+    "action": "copy"
+  }
+]
