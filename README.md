@@ -77,3 +77,8 @@ python nameplate_web_app.py
 ```text
 http://127.0.0.1:8000/
 ```
+
+
+## Codex Cloud handoff preparation
+
+Read [agent instructions](AGENTS.md) and [migration limitations](docs/MIGRATION_HANDOFF.md). This local preparation has not been pushed or deployed.
