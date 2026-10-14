@@ -10,3 +10,7 @@ __pycache__/
 *.out.log
 .DS_Store
 Thumbs.db
+
+# Private traffic-lock state and Python bytecode
+.traffic-lock/
+**/traffic-lock/__pycache__/
