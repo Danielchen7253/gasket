@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "project": "gasket",
+  "sourceCommit": "03ad7db6fcc04b0d9bf5a6127fa037ccf6f2d9dc",
+  "sourceBranch": "main",
+  "classification": "python-web-and-worker",
+  "inspectedEntryPoints": [
+    "nameplate_web_app.py",
+    "render.yaml"
+  ],
+  "default": "closed",
+  "externalScope": "inbound-http",
+  "netlifyEdgeConfiguredInSource": false,
+  "liveDeploymentVerified": false,
+  "existingDirectOriginsClosed": false,
+  "databaseAndStorageDirectAccessVerified": false,
+  "websocketCoverage": false,
+  "ownerApprovalRequired": true,
+  "ttlMinutesMax": 1440,
+  "limits": {
+    "projectRequestsPer60s": 600,
+    "sourceRequestsPer60s": 120,
+    "sameMethodPathRequestsPer10s": 20,
+    "gatewayBytesPer60s": 52428800
+  },
+  "implementationFiles": {
+    "gate.py": "07bbf21059b6c91a39725600fae8b49103f9400e55ef3a5a46bb12639c13a17c",
+    "test_gate.py": "7684d4ac9289ce764df883c4a11096cf70a8a30f127053ab4147d2f39701f164",
+    "traffic-lock.ts": "0536137d01337830dc1e9a364e1ae169cc4d20a8b9e0ff015e11fb6e359ca8c4",
+    "test_edge.mjs": "44d7fef2a5c4efc1a385a070927295fbba80e2931776b4c3aae8d2e5f2c9dd56",
+    "README.md": "7750a7677e1736e642c75cd8686087733cc4b52365fb9466726013872e34eca9"
+  }
+}
