@@ -7,7 +7,6 @@
     "changed_entries": 1,
     "repo": "gasket",
     "snapshot": "files-mentioned-by-the-user-us-b367691db1",
-    "file_count": 54,
     "tracked_changes": [
       "daily_database_digest.py"
     ],
@@ -15,9 +14,9 @@
       "daily_database_digest.py"
     ],
     "untracked_paths": [],
-    "overlay_file_count": 0,
     "base_head_verified_on_github": true,
     "recovery_mode": "base_plus_overlay",
-    "excluded_changed_path_count": 0
+    "excluded_changed_path_count": 0,
+    "source_file_count": 0
   }
 ]
